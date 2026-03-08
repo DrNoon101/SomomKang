@@ -127,7 +127,7 @@ export default function GameHub() {
                 </div>
               </h2>
               
-              <form onSubmit={handleEnterRoom} className="space-y-4">
+              <div className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง (พิมพ์อะไรก็ได้)</label>
                   <input type="text" required placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-white transition-colors uppercase text-center text-xl tracking-widest" />
@@ -145,9 +145,39 @@ export default function GameHub() {
                 )}
 
                 <button type="submit" className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${selectedGame === "somomkang" ? "bg-gradient-to-r from-green-400 to-emerald-500" : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"}`}>
-                  {modalMode === "create" ? "ลุย!" : "เข้าไปแจม!"}
+                <button 
+  type="button" 
+  onClick={() => {
+    // 1. เช็คก่อนว่าพี่บอมลืมกรอกอะไรไหม
+    if (!username.trim()) {
+      alert("กรุณาใส่ชื่อสุดปั่นก่อนครับพี่บอม!");
+      return;
+    }
+    if (!roomId.trim()) {
+      alert("กรุณาใส่รหัสห้องด้วยครับ!");
+      return;
+    }
+
+    // 2. บันทึกข้อมูลลงเครื่อง
+    sessionStorage.setItem("somomkang_username", username.trim());
+    sessionStorage.setItem("somomkang_mode", modalMode || "join");
+
+    // 3. สั่งวาร์ปไปตามเกมที่เลือก (ถ้าเลือกไพ่ไป /game ถ้าเลือกนิยายไป /yamstory)
+    const targetPath = selectedGame === "somomkang" ? "/game" : "/yamstory";
+    
+    console.log("กำลังวาร์ปไปที่:", targetPath, "ห้อง:", roomId); // เอาไว้ดูในคอนโซลเผื่อติดขัด
+    router.push(`${targetPath}?room=${roomId.trim()}`);
+  }}
+  className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${
+    selectedGame === "somomkang" 
+      ? "bg-gradient-to-r from-green-400 to-emerald-500" 
+      : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"
+  }`}
+>
+  {modalMode === "create" ? "ลุย!" : "เข้าไปแจม!"}
+</button>
                 </button>
-              </form>
+                </div>
             </motion.div>
           </motion.div>
         )}
