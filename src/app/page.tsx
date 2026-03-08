@@ -102,7 +102,7 @@ export default function GameHub() {
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
-              <h2 className="text-white font-black text-xl">{username ? `${username}'s Card` : "SomomKang"}</h2>
+              <h2 className="text-white font-black text-xl">SomomKang</h2>
               <p className="text-white/60 text-xs mt-1">ดวลเดือด น็อคมืด สาดอีโมจิ</p>
             </div>
             <div className="flex gap-2 w-full">
