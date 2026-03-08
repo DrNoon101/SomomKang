@@ -114,6 +114,8 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [hand, setHand] = useState<CardData[]>([]);
   const [publicState, setPublicState] = useState<PublicState | null>(null);
+  const [showFlowMock, setShowFlowMock] = useState(false);
+  const isKanged = publicState?.status === "ended" && (publicState?.endGameReason === "kang" || publicState?.endGameReason === "kang_shipwreck");
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [pendingFlow, setPendingFlow] = useState<FlowAvailablePayload | null>(null);
@@ -178,6 +180,14 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
       socket.emit("join_room", { roomId, username, maxPlayers: mode === "create" && savedMaxPlayers ? parseInt(savedMaxPlayers as string) : undefined });
     });
 
+    // 😈 รับสัญญาณโดนไหล + เล่นเสียงเยาะเย้ย
+    socket.on("got_flowed_mock", () => {
+      setShowFlowMock(true);
+      const audio = new Audio("https://rpg.hamsterrepublic.com/wiki-images/d/d3/Nyeh.ogg");
+      audio.play().catch(() => {}); // เล่นเสียงหัวเราะชั่วร้าย
+      
+      setTimeout(() => setShowFlowMock(false), 3000); // ปิดมีมใน 3 วิ
+    });
     socket.on("game_state", (payload: { public: PublicState; yourHand: CardData[]; yourPlayerId: string }) => {
       setPublicState(payload.public);
       setHand(payload.yourHand);
@@ -227,6 +237,12 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
 
   const isMyTurn = publicState && myPlayerId && publicState.currentTurnPlayerId === myPlayerId && publicState.status === "playing";
 
+  // 🔊 เพิ่มเสียงเตือนเมื่อถึงตาเล่น
+  useEffect(() => {
+    if (isMyTurn && !isMuted) {
+      playRetroSound("action"); // เล่นเสียงติ๊ง! เตือนให้รู้ตัว
+    }
+  }, [isMyTurn, isMuted]);
   useEffect(() => {
     if (!isMyTurn || publicState?.status !== "playing") setPendingFlow(null);
   }, [isMyTurn, publicState?.status]);
@@ -312,6 +328,13 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
 
   if (!isMounted) return null;
 
+  // 😈 เล่นเสียงหัวเราะตอนมีคนโดนแคงจบเกม
+  useEffect(() => {
+    if (isKanged) {
+      const audio = new Audio("https://rpg.hamsterrepublic.com/wiki-images/d/d3/Nyeh.ogg");
+      audio.play().catch(() => {});
+    }
+  }, [isKanged]);
   return (
     <div className="relative w-full h-dvh overflow-hidden bg-felt">
       
@@ -384,13 +407,17 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
         return <OpponentAvatar key={opp.id} name={opp.name} cardCount={opp.handCount} chips={opp.chips} leftPercent={leftPercent} topPercent={topPercent} isCurrentTurn={publicState?.currentTurnPlayerId === opp.id} />;
       })}
 
-      {publicState?.status === "playing" && (
+{publicState?.status === "playing" && (
         <AnimatePresence>
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className="absolute top-16 left-0 right-0 flex justify-center z-10 pointer-events-none px-4">
+          <motion.div initial={{ opacity: 0, y: -50, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="absolute top-[20%] left-0 right-0 flex justify-center z-40 pointer-events-none px-4">
             {isMyTurn ? (
-              <div className="text-xl sm:text-2xl font-extrabold text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.8)] animate-pulse bg-black/60 px-6 py-2 rounded-full border border-green-500/30 backdrop-blur-sm">✨ ถึงตาคุณแล้ว! ✨</div>
+              <div className="text-3xl sm:text-5xl font-black text-green-400 drop-shadow-[0_0_20px_rgba(74,222,128,1)] animate-bounce bg-black/80 px-10 py-5 rounded-full border-4 border-green-500/50 backdrop-blur-md shadow-2xl flex items-center gap-4">
+                🔥 <span>ถึงตาคุณแล้ว!</span> 🔥
+              </div>
             ) : currentTurnPlayer ? (
-              <div className="text-sm sm:text-base font-semibold text-white/90 drop-shadow-md bg-black/60 px-6 py-2 rounded-full inline-block border border-white/10 backdrop-blur-sm">กำลังรอ <span className="text-gold">{currentTurnPlayer.name}</span> เล่น...</div>
+              <div className="text-xl sm:text-3xl font-bold text-white/90 drop-shadow-md bg-black/80 px-8 py-4 rounded-full inline-block border-2 border-white/20 backdrop-blur-md shadow-xl">
+                กำลังรอ <span className="text-gold text-4xl">{currentTurnPlayer.name}</span> เล่น...
+              </div>
             ) : null}
           </motion.div>
         </AnimatePresence>
@@ -577,6 +604,92 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
           </motion.div>
         </AnimatePresence>
       )}
+    {/* ========================================= */}
+      {/* 🌟 1. มีมเยาะเย้ยตอนโดน "ไหล" (Flow) */}
+      <AnimatePresence>
+        {showFlowMock && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-red-900/60 backdrop-blur-sm pointer-events-none p-4">
+            <motion.img 
+              src="/mock-kang.jpg" // 🚨 อย่าลืมเอารูปใส่โฟลเดอร์ public/ นะ!
+              alt="Flow Mock" 
+              className="w-full max-w-sm sm:max-w-md rounded-[50px] border-8 border-red-500 shadow-[0_0_100px_rgba(239,68,68,1)]"
+              animate={{ scale: [1, 1.3, 1], rotate: [-15, 15, -15] }}
+              transition={{ duration: 0.5, repeat: 5 }}
+            />
+            <h2 className="mt-8 text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-400 to-yellow-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] stroke-black stroke-2 text-center">
+              โดนไหลไปดิ!! 🤡💸
+            </h2>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🌟 2. มีมเยาะเย้ยตอนโดน "แคง" จบเกม */}
+      <AnimatePresence>
+        {isKanged && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.img 
+              src="/mock-kang.jpg" 
+              alt="Kang Mock" 
+              className="w-full max-w-sm sm:max-w-md rounded-[50px] border-8 border-red-500 shadow-[0_0_100px_rgba(239,68,68,1)]"
+              animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+              transition={{ duration: 0.3, repeat: Infinity }}
+            />
+            <h2 className="mt-8 text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-400 to-yellow-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] stroke-black stroke-2 text-center">
+              โดนแคงหน้าสั่น!! 🤡
+            </h2>
+            <p className="text-white text-3xl mt-6 font-bold">
+              ผู้ชนะคือ: <span className="text-gold animate-pulse">{publicState?.endedGameData?.winnerName}</span> 👑
+            </p>
+            {/* ปุ่มเริ่มเกมใหม่ ซ่อนไว้ก่อนให้โฮสต์กดได้คนเดียว ถ้ามีตัวแปร isHost ให้เอาคอมเมนต์ออกครับ */}
+            {/* isHost && (
+              <button onClick={handlePlayAgain} className="mt-10 px-12 py-6 bg-gradient-to-r from-green-500 to-emerald-600 hover:scale-105 text-black font-black text-3xl rounded-3xl transition-all shadow-[0_0_30px_rgba(74,222,128,0.5)]">
+                เริ่มตาใหม่! 🔄
+              </button>
+            )*/}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ========================================= */}
+    {/* ========================================= */}
+      {/* 🌟 1. มีมเยาะเย้ยตอนโดน "ไหล" (Flow) */}
+      <AnimatePresence>
+        {showFlowMock && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-red-900/60 backdrop-blur-sm pointer-events-none p-4">
+            <motion.img 
+              src="/mock-kang.jpg" 
+              alt="Flow Mock" 
+              className="w-full max-w-sm sm:max-w-md rounded-[50px] border-8 border-red-500 shadow-[0_0_100px_rgba(239,68,68,1)]"
+              animate={{ scale: [1, 1.3, 1], rotate: [-15, 15, -15] }}
+              transition={{ duration: 0.5, repeat: 5 }}
+            />
+            <h2 className="mt-8 text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-400 to-yellow-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] stroke-black stroke-2 text-center">
+              โดนไหลไปดิ!! 🤡💸
+            </h2>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🌟 2. มีมเยาะเย้ยตอนโดน "แคง" จบเกม */}
+      <AnimatePresence>
+        {isKanged && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.img 
+              src="/mock-kang.jpg" 
+              alt="Kang Mock" 
+              className="w-full max-w-sm sm:max-w-md rounded-[50px] border-8 border-red-500 shadow-[0_0_100px_rgba(239,68,68,1)]"
+              animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+              transition={{ duration: 0.3, repeat: Infinity }}
+            />
+            <h2 className="mt-8 text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-400 to-yellow-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] stroke-black stroke-2 text-center">
+              โดนแคงหน้าสั่น!! 🤡
+            </h2>
+            <p className="text-white text-3xl mt-6 font-bold">
+              ผู้ชนะคือ: <span className="text-gold animate-pulse">{publicState?.endedGameData?.winnerName}</span> 👑
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ========================================= */}
     </div>
   );
 }

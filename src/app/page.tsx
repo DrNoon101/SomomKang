@@ -89,7 +89,7 @@ export default function GameHub() {
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.2)] flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 hover:shadow-[0_0_30px_rgba(34,197,94,0.4)]">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
-              <h2 className="text-white font-black text-xl">สมมแคง</h2>
+              <h2 className="text-white font-black text-xl">SomomKang</h2>
               <p className="text-white/60 text-xs mt-1">เกมไพ่ดวลเดือด น็อคมืด สาดอีโมจิ</p>
             </div>
             <div className="flex gap-2 w-full">
@@ -123,7 +123,7 @@ export default function GameHub() {
               <h2 className="text-2xl font-black text-white text-center mb-6">
                 {modalMode === "create" ? "👑 สร้างห้องใหม่" : "🚪 เข้าร่วมห้อง"}
                 <div className={`text-sm mt-1 font-medium ${selectedGame === "somomkang" ? "text-green-400" : "text-blue-400"}`}>
-                  เกม: {selectedGame === "somomkang" ? "สมมแคง (ไพ่)" : "นิยายยำเละ"}
+                  เกม: {selectedGame === "somomkang" ? "SomomKang (ไพ่)" : "นิยายยำเละ"}
                 </div>
               </h2>
               

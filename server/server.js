@@ -190,7 +190,7 @@ const yamRooms = new Map();
 function getOrCreateYamRoom(roomId) {
   let room = yamRooms.get(roomId);
   if (!room) {
-    room = { id: roomId, hostId: null, status: "waiting", players: [], currentTurnIndex: null, lastWords: "", turnCount: 0, fullStory: [] };
+    room = { id: roomId, hostId: null, status: "waiting", players: [], currentTurnIndex: null, lastWords: "", turnCount: 0, fullStory: [], maxPlayers: 4, maxRounds: 3 };
     yamRooms.set(roomId, room);
   }
   return room;
@@ -207,6 +207,8 @@ function broadcastYamState(roomId) {
     currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null,
     lastWords: room.lastWords,
     turnCount: room.turnCount,
+    maxPlayers: room.maxPlayers,
+    maxRounds: room.maxRounds,
     fullStory: room.status === "ended" ? room.fullStory : undefined
   };
   io.to(`yam_${roomId}`).emit("yam_state", state);
@@ -314,6 +316,8 @@ io.on("connection", (socket) => {
 
     const victim = getPlayer(room, room.pendingFlow.fromPlayerId);
     const FLOW_PENALTY = 25 * cardsToDiscard.length;
+    
+    // หักเงินคนโดนไหล และเพิ่มเงินให้คนไหล
     if (victim) {
       victim.chips -= FLOW_PENALTY;
       player.chips += FLOW_PENALTY;
@@ -325,16 +329,27 @@ io.on("connection", (socket) => {
       room.discardPile.push(card);
     }
 
+    const currentRank = room.pendingFlow.rank;
+
     if (player.hand.length === 0) {
       room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand";
       distributeChips(room);
-      io.to(room.id).emit("flow_win", { winnerId: player.id, rank: room.pendingFlow.rank });
+      io.to(room.id).emit("flow_win", { winnerId: player.id, rank: currentRank });
+      room.pendingFlow = null;
     } else {
       const playerIndex = room.players.findIndex((p) => p.id === player.id);
       const nextIndex = getNextPlayerIndex(room, playerIndex);
-      if (nextIndex != null) room.currentTurnIndex = nextIndex;
+      
+      // 🔥 ไฮไลต์: ส่งต่อสถานะ "ไหล" ให้คนถัดไปได้เรื่อยๆ!
+      if (nextIndex != null) {
+        const nextPlayer = room.players[nextIndex];
+        room.currentTurnIndex = nextIndex;
+        room.pendingFlow = { rank: currentRank, fromPlayerId: player.id, toPlayerId: nextPlayer.id };
+        io.to(nextPlayer.id).emit("flow_available", { roomId, rank: currentRank, fromPlayerId: player.id });
+      } else {
+        room.pendingFlow = null;
+      }
     }
-    room.pendingFlow = null;
     broadcastState(roomId);
   });
 
@@ -345,12 +360,16 @@ io.on("connection", (socket) => {
   });
 
   // --- ฝั่งนิยายยำเละ (Yamstory) ---
-  socket.on("join_yam_room", ({ roomId, username }) => {
+  socket.on("join_yam_room", ({ roomId, username, maxPlayers, maxRounds }) => {
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "นักเขียนนิรนาม";
     const room = getOrCreateYamRoom(roomId);
     
-    if (room.players.length === 0) room.hostId = socket.id;
+    if (room.players.length === 0) {
+      room.hostId = socket.id;
+      if (maxPlayers) room.maxPlayers = maxPlayers;
+      if (maxRounds) room.maxRounds = maxRounds;
+    }
 
     let existingPlayer = room.players.find(p => p.name === safeName);
     if (existingPlayer) {
@@ -358,6 +377,8 @@ io.on("connection", (socket) => {
       existingPlayer.id = socket.id;
       existingPlayer.connected = true;
     } else {
+      if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว ไม่สามารถเข้าร่วมได้");
+      if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); 
       room.players.push({ id: socket.id, name: safeName, connected: true });
     }
 
@@ -373,6 +394,50 @@ io.on("connection", (socket) => {
     room.currentTurnIndex = 0;
     room.turnCount = 1;
     room.lastWords = "";
+    room.fullStory = [];
+    broadcastYamState(roomId);
+  });
+
+  socket.on("submit_yam_text", ({ roomId, text }) => {
+    const room = yamRooms.get(roomId);
+    if (!room || room.status !== "playing") return;
+    
+    const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+
+    const player = room.players[playerIndex];
+    room.fullStory.push({ playerId: player.id, playerName: player.name, text: text.trim() });
+
+    const cleanText = text.trim();
+    const cutLength = 30; 
+    room.lastWords = cleanText.length > cutLength 
+      ? "..." + cleanText.substring(cleanText.length - cutLength) 
+      : cleanText;
+
+    // 🛑 ระบบตัดจบอัตโนมัติเมื่อครบจำนวนรอบ (จำนวนคน x จำนวนรอบที่ตั้งไว้)
+    if (room.turnCount >= room.maxRounds * room.players.length) {
+      room.status = "ended";
+    } else {
+      room.turnCount++;
+      room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
+    }
+    
+    broadcastYamState(roomId);
+  });
+
+  socket.on("end_yam_game", ({ roomId }) => {
+    const room = yamRooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    room.status = "ended";
+    broadcastYamState(roomId);
+  });
+
+  socket.on("reset_yam_game", ({ roomId }) => {
+    const room = yamRooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+    room.status = "waiting";
+    room.lastWords = "";
+    room.turnCount = 0;
     room.fullStory = [];
     broadcastYamState(roomId);
   });
