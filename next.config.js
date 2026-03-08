@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     eslint: {
-      // ปิดตาระบบตรวจคำผิดตอนขึ้น Vercel
+      // ยันต์ปิดตาคุณครูฝ่ายปกครอง ห้ามตรวจคำผิดตอนขึ้นเว็บ!
       ignoreDuringBuilds: true,
     },
   };
