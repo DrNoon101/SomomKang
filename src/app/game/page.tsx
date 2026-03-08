@@ -20,12 +20,6 @@ function GameContent() {
     <div className="relative h-dvh">
       <GameBoard roomId={roomId} username={username} />
       {/* Back to Lobby - for Step 1 testing */}
-      <Link
-        href="/"
-        className="absolute bottom-24 left-4 px-3 py-2 rounded-lg bg-black/30 text-white/90 text-sm hover:bg-black/50 transition-colors z-30"
-      >
-        ← กลับไปล็อบบี้
-      </Link>
     </div>
   );
 }
