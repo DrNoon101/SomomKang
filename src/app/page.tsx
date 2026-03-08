@@ -7,11 +7,9 @@ export default function GameHub() {
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
   
-  // แยก State กล่อง Pop-up ของใครของมันชัดเจน
   const [somomkangModal, setSomomkangModal] = useState<"create" | "join" | null>(null);
   const [yamstoryModal, setYamstoryModal] = useState<"create" | "join" | null>(null);
   
-  // ตั้งค่าเฉพาะเกมไพ่
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [rounds, setRounds] = useState(1);
 
@@ -34,18 +32,17 @@ export default function GameHub() {
   const openSomomkang = (mode: "create" | "join") => {
     if (!checkUsername()) return;
     setRoomId("");
-    setYamstoryModal(null); // ปิดกล่องนิยาย (กันเหนียว)
+    setYamstoryModal(null); 
     setSomomkangModal(mode);
   };
 
   const openYamstory = (mode: "create" | "join") => {
     if (!checkUsername()) return;
     setRoomId("");
-    setSomomkangModal(null); // ปิดกล่องไพ่ (กันเหนียว)
+    setSomomkangModal(null); 
     setYamstoryModal(mode);
   };
 
-  // 🃏 ฟังก์ชันเข้าเกมไพ่
   const executeSomomkang = () => {
     if (!roomId.trim()) {
       alert("กรุณาใส่รหัสห้องด้วยครับ!");
@@ -59,7 +56,6 @@ export default function GameHub() {
     window.location.href = `/game?room=${roomId.trim()}`;
   };
 
-  // ✍️ ฟังก์ชันเข้าเกมนิยาย (ไม่มีตั้งค่าคน/รอบ)
   const executeYamstory = () => {
     if (!roomId.trim()) {
       alert("กรุณาใส่รหัสห้องด้วยครับ!");
@@ -91,8 +87,6 @@ export default function GameHub() {
         </div>
 
         <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
-          
-          {/* เมนูเกมไพ่ */}
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
@@ -105,7 +99,6 @@ export default function GameHub() {
             </div>
           </div>
 
-          {/* เมนูเกมนิยาย */}
           <div className="bg-gradient-to-br from-blue-900 to-indigo-950 p-5 rounded-3xl border border-blue-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2">
             <div className="text-center">
               <div className="text-4xl mb-2">✍️</div>
@@ -117,14 +110,13 @@ export default function GameHub() {
               <button type="button" onClick={() => openYamstory("join")} className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-sm border border-white/20">แจมด้วย</button>
             </div>
           </div>
-
         </div>
       </motion.div>
 
       <AnimatePresence>
         
         {/* ------------------------------------------- */}
-        {/* 🃏 กล่อง Pop-up สำหรับเกมไพ่ SomomKang เท่านั้น */}
+        {/* กล่อง SomomKang (มีตั้งค่า) */}
         {/* ------------------------------------------- */}
         {somomkangModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSomomkangModal(null)}>
@@ -172,7 +164,7 @@ export default function GameHub() {
         )}
 
         {/* ------------------------------------------- */}
-        {/* ✍️ กล่อง Pop-up สำหรับเกมนิยาย Yamstory เท่านั้น */}
+        {/* กล่องเกมนิยาย (ไม่มีตั้งค่า) */}
         {/* ------------------------------------------- */}
         {yamstoryModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setYamstoryModal(null)}>
@@ -190,8 +182,6 @@ export default function GameHub() {
                   <input type="text" placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") executeYamstory(); }} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-blue-500 uppercase text-center text-xl tracking-widest" />
                 </div>
                 
-                {/* ❌ สังเกตว่าในกล่องนี้ โค้ชลบโค้ด "จำนวนคน/รอบ" ทิ้งแบบถอนรากถอนโคน ไม่มีสิทธิ์โผล่มาแน่นอน */}
-
                 <button type="button" onClick={executeYamstory} className="w-full py-4 rounded-xl text-white font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 bg-gradient-to-r from-blue-400 to-indigo-400">
                   {yamstoryModal === "create" ? "เริ่มเปิดเรื่อง!" : "หยิบปากกาแจมด้วย!"}
                 </button>
