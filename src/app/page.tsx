@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function GameHub() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
   const [selectedGame, setSelectedGame] = useState<"somomkang" | "yamstory" | null>(null);
@@ -22,7 +20,7 @@ export default function GameHub() {
 
   const handleOpenModal = (game: "somomkang" | "yamstory", mode: "create" | "join") => {
     if (!username.trim()) {
-      alert("กรุณาใส่ชื่อก่อนเข้าวง!");
+      alert("กรุณาใส่ชื่อสุดปั่นก่อนครับพี่บอม!");
       return;
     }
     sessionStorage.setItem("somomkang_username", username.trim());
@@ -30,10 +28,12 @@ export default function GameHub() {
     setModalMode(mode);
   };
 
-  const handleEnterRoom = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!roomId.trim()) return;
-    
+  const executeEnterRoom = () => {
+    if (!roomId.trim()) {
+      alert("กรุณาใส่รหัสห้องด้วยครับลูกพี่!");
+      return;
+    }
+
     sessionStorage.setItem("somomkang_mode", modalMode || "join");
     if (modalMode === "create") {
       sessionStorage.setItem("somomkang_maxPlayers", maxPlayers.toString());
@@ -41,7 +41,9 @@ export default function GameHub() {
 
     // แยกเส้นทางไปตามเกมที่เลือก
     const targetPath = selectedGame === "somomkang" ? "/game" : "/yamstory";
-    router.push(`${targetPath}?room=${roomId.trim()}`);
+    
+    // ท่าไม้ตาย: บังคับเบราว์เซอร์ให้วาร์ปไปหน้านั้นเลย (แก้บั๊กกดแล้วนิ่ง)
+    window.location.href = `${targetPath}?room=${roomId.trim()}`;
   };
 
   return (
@@ -89,7 +91,7 @@ export default function GameHub() {
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.2)] flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 hover:shadow-[0_0_30px_rgba(34,197,94,0.4)]">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
-              <h2 className="text-white font-black text-xl">SomomKang</h2>
+              <h2 className="text-white font-black text-xl">สมมแคง</h2>
               <p className="text-white/60 text-xs mt-1">เกมไพ่ดวลเดือด น็อคมืด สาดอีโมจิ</p>
             </div>
             <div className="flex gap-2 w-full">
@@ -123,14 +125,14 @@ export default function GameHub() {
               <h2 className="text-2xl font-black text-white text-center mb-6">
                 {modalMode === "create" ? "👑 สร้างห้องใหม่" : "🚪 เข้าร่วมห้อง"}
                 <div className={`text-sm mt-1 font-medium ${selectedGame === "somomkang" ? "text-green-400" : "text-blue-400"}`}>
-                เกม: {selectedGame === "somomkang" ? "SomomKang" : "นิยายยำเละ"}
+                  เกม: {selectedGame === "somomkang" ? "สมมแคง (ไพ่)" : "นิยายยำเละ"}
                 </div>
               </h2>
               
               <div className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง (พิมพ์อะไรก็ได้)</label>
-                  <input type="text" required placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-white transition-colors uppercase text-center text-xl tracking-widest" />
+                  <input type="text" placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-white transition-colors uppercase text-center text-xl tracking-widest" />
                 </div>
                 
                 {modalMode === "create" && selectedGame === "somomkang" && (
@@ -144,40 +146,13 @@ export default function GameHub() {
                   </div>
                 )}
 
-                <button type="submit" className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${selectedGame === "somomkang" ? "bg-gradient-to-r from-green-400 to-emerald-500" : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"}`}>
                 <button 
-  type="button" 
-  onClick={() => {
-    // 1. เช็คก่อนว่าพี่บอมลืมกรอกอะไรไหม
-    if (!username.trim()) {
-      alert("กรุณาใส่ชื่อสุดปั่นก่อนครับพี่บอม!");
-      return;
-    }
-    if (!roomId.trim()) {
-      alert("กรุณาใส่รหัสห้องด้วยครับ!");
-      return;
-    }
-
-    // 2. บันทึกข้อมูลลงเครื่อง
-    sessionStorage.setItem("somomkang_username", username.trim());
-    sessionStorage.setItem("somomkang_mode", modalMode || "join");
-
-    // 3. สั่งวาร์ปไปตามเกมที่เลือก (ถ้าเลือกไพ่ไป /game ถ้าเลือกนิยายไป /yamstory)
-    const targetPath = selectedGame === "somomkang" ? "/game" : "/yamstory";
-    
-    console.log("กำลังวาร์ปไปที่:", targetPath, "ห้อง:", roomId); // เอาไว้ดูในคอนโซลเผื่อติดขัด
-    router.push(`${targetPath}?room=${roomId.trim()}`);
-  }}
-  className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${
-    selectedGame === "somomkang" 
-      ? "bg-gradient-to-r from-green-400 to-emerald-500" 
-      : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"
-  }`}
->
-  {modalMode === "create" ? "ลุย!" : "เข้าไปแจม!"}
-</button>
+                  onClick={executeEnterRoom} 
+                  className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${selectedGame === "somomkang" ? "bg-gradient-to-r from-green-400 to-emerald-500" : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"}`}
+                >
+                  {modalMode === "create" ? "ลุย!" : "เข้าไปแจม!"}
                 </button>
-                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
