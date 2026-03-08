@@ -123,7 +123,7 @@ export default function GameHub() {
               <h2 className="text-2xl font-black text-white text-center mb-6">
                 {modalMode === "create" ? "👑 สร้างห้องใหม่" : "🚪 เข้าร่วมห้อง"}
                 <div className={`text-sm mt-1 font-medium ${selectedGame === "somomkang" ? "text-green-400" : "text-blue-400"}`}>
-                  เกม: {selectedGame === "somomkang" ? "SomomKang (ไพ่)" : "นิยายยำเละ"}
+                เกม: {selectedGame === "somomkang" ? "SomomKang" : "นิยายยำเละ"}
                 </div>
               </h2>
               
