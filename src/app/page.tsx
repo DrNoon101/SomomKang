@@ -2,121 +2,155 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
-import { RulesModal } from "@/components/RulesModal";
+import { motion, AnimatePresence } from "framer-motion";
 
-export default function LobbyPage() {
+export default function GameHub() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
-  const [mode, setMode] = useState<"create" | "join">("create");
+  const [selectedGame, setSelectedGame] = useState<"somomkang" | "yamstory" | null>(null);
+  const [modalMode, setModalMode] = useState<"create" | "join" | null>(null);
   const [maxPlayers, setMaxPlayers] = useState(4);
-  const [error, setError] = useState("");
-  const [showSplash, setShowSplash] = useState(true);
-  const [showRules, setShowRules] = useState(false);
 
+  // โหลดชื่อเก่าที่เคยตั้งไว้
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 2500);
-    return () => clearTimeout(timer);
+    if (typeof window !== "undefined") {
+      const savedName = sessionStorage.getItem("somomkang_username");
+      if (savedName) setUsername(savedName);
+    }
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    const trimmedUsername = username.trim();
-    const trimmedRoomId = roomId.trim();
-
-    if (!trimmedUsername) return setError("กรุณาใส่ชื่อผู้เล่น");
-    if (mode === "create" && !trimmedRoomId) return setError("กรุณาใส่รหัสห้องที่ต้องการสร้าง");
-    if (mode === "join" && !trimmedRoomId) return setError("กรุณาใส่รหัสห้องที่ต้องการเข้าร่วม");
-
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("somomkang_username", trimmedUsername);
-      sessionStorage.setItem("somomkang_roomId", trimmedRoomId);
-      sessionStorage.setItem("somomkang_mode", mode);
-      if (mode === "create") sessionStorage.setItem("somomkang_maxPlayers", maxPlayers.toString());
+  const handleOpenModal = (game: "somomkang" | "yamstory", mode: "create" | "join") => {
+    if (!username.trim()) {
+      alert("กรุณาใส่ชื่อก่อนเข้าวง!");
+      return;
     }
-    router.push(`/game?room=${encodeURIComponent(trimmedRoomId)}`);
+    sessionStorage.setItem("somomkang_username", username.trim());
+    setSelectedGame(game);
+    setModalMode(mode);
   };
 
-  const generateRoomId = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let id = "";
-    for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
-    setRoomId(id);
+  const handleEnterRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomId.trim()) return;
+    
+    sessionStorage.setItem("somomkang_mode", modalMode || "join");
+    if (modalMode === "create") {
+      sessionStorage.setItem("somomkang_maxPlayers", maxPlayers.toString());
+    }
+
+    // แยกเส้นทางไปตามเกมที่เลือก
+    const targetPath = selectedGame === "somomkang" ? "/game" : "/yamstory";
+    router.push(`${targetPath}?room=${roomId.trim()}`);
   };
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+    <div className="relative min-h-dvh flex flex-col items-center justify-center bg-gray-900 overflow-hidden font-sans">
+      
+      {/* พื้นหลังเท่ๆ */}
+      <div className="absolute inset-0 pointer-events-none opacity-20">
+        <div className="absolute top-10 left-10 text-9xl text-gold rotate-12 drop-shadow-2xl blur-[2px]">🃏</div>
+        <div className="absolute bottom-20 right-20 text-9xl text-blue-500 -rotate-12 drop-shadow-2xl blur-[2px]">✍️</div>
+      </div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: -50 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="z-10 text-center mb-10"
+      >
+        <h1 className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-amber-300 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]">
+          Vorvare's Arcade
+        </h1>
+        <p className="text-white/70 mt-3 text-lg sm:text-xl font-medium">ศูนย์รวมเกมทำลายมิตรภาพ</p>
+      </motion.div>
+
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }} 
+        animate={{ opacity: 1, scale: 1 }} 
+        className="z-10 w-full max-w-md px-4 flex flex-col items-center gap-6"
+      >
+        {/* ช่องใส่ชื่อ */}
+        <div className="w-full bg-black/40 p-6 rounded-3xl backdrop-blur-md border border-white/10 shadow-2xl">
+          <label className="block text-white/80 font-bold mb-2">นามแฝงของคุณ</label>
+          <input
+            type="text"
+            placeholder="ใส่ชื่อสุดปั่น..."
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full px-5 py-4 bg-black/50 border-2 border-white/10 rounded-xl text-white text-lg font-bold outline-none focus:border-gold focus:ring-2 focus:ring-gold/50 transition-all text-center"
+            maxLength={12}
+          />
+        </div>
+
+        {/* เมนูเลือกเกม */}
+        <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          {/* เกม 1: ไพ่สมมแคง */}
+          <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.2)] flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 hover:shadow-[0_0_30px_rgba(34,197,94,0.4)]">
+            <div className="text-center">
+              <div className="text-4xl mb-2">🃏</div>
+              <h2 className="text-white font-black text-xl">สมมแคง</h2>
+              <p className="text-white/60 text-xs mt-1">เกมไพ่ดวลเดือด น็อคมืด สาดอีโมจิ</p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button onClick={() => handleOpenModal("somomkang", "create")} className="flex-1 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-lg text-sm transition-colors">สร้างวง</button>
+              <button onClick={() => handleOpenModal("somomkang", "join")} className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-sm border border-white/20 transition-colors">เข้าร่วม</button>
+            </div>
+          </div>
+
+          {/* เกม 2: นิยายยำเละ */}
+          <div className="bg-gradient-to-br from-blue-900 to-indigo-950 p-5 rounded-3xl border border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.2)] flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 hover:shadow-[0_0_30px_rgba(59,130,246,0.4)]">
+            <div className="text-center">
+              <div className="text-4xl mb-2">✍️</div>
+              <h2 className="text-white font-black text-xl">นิยายยำเละ</h2>
+              <p className="text-white/60 text-xs mt-1">แต่งนิยายต่อกันด้วย 5 คำสุดท้าย</p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button onClick={() => handleOpenModal("yamstory", "create")} className="flex-1 py-2 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-lg text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-colors">เปิดเรื่อง</button>
+              <button onClick={() => handleOpenModal("yamstory", "join")} className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-sm border border-white/20 transition-colors">แจมด้วย</button>
+            </div>
+          </div>
+
+        </div>
+      </motion.div>
+
+      {/* Modal กรอกรหัสห้อง */}
       <AnimatePresence>
-        {showSplash && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.5, filter: "blur(20px)" }}
-            transition={{ duration: 0.6, ease: "easeInOut" }}
-            className="absolute inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl"
-          >
-            <h1 className="text-4xl sm:text-7xl font-black text-red-600 drop-shadow-[0_0_30px_rgba(220,38,38,0.8)] tracking-widest text-center">
-              สวัสดีไอพวกโสมม
-            </h1>
+        {modalMode && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className={`bg-gray-900 border-2 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative ${selectedGame === "somomkang" ? "border-green-500/50" : "border-blue-500/50"}`}>
+              <button onClick={() => setModalMode(null)} className="absolute top-4 right-4 text-white/50 hover:text-white text-xl">✕</button>
+              <h2 className="text-2xl font-black text-white text-center mb-6">
+                {modalMode === "create" ? "👑 สร้างห้องใหม่" : "🚪 เข้าร่วมห้อง"}
+                <div className={`text-sm mt-1 font-medium ${selectedGame === "somomkang" ? "text-green-400" : "text-blue-400"}`}>
+                  เกม: {selectedGame === "somomkang" ? "สมมแคง (ไพ่)" : "นิยายยำเละ"}
+                </div>
+              </h2>
+              
+              <form onSubmit={handleEnterRoom} className="space-y-4">
+                <div>
+                  <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง (พิมพ์อะไรก็ได้)</label>
+                  <input type="text" required placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-white transition-colors uppercase text-center text-xl tracking-widest" />
+                </div>
+                
+                {modalMode === "create" && selectedGame === "somomkang" && (
+                  <div>
+                    <label className="block text-white/70 text-sm font-bold mb-2">จำนวนผู้เล่นสูงสุด</label>
+                    <select value={maxPlayers} onChange={(e) => setMaxPlayers(Number(e.target.value))} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none">
+                      <option value={2}>2 คน (ดวลเดี่ยว)</option>
+                      <option value={3}>3 คน</option>
+                      <option value={4}>4 คน (เต็มวง)</option>
+                    </select>
+                  </div>
+                )}
+
+                <button type="submit" className={`w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 ${selectedGame === "somomkang" ? "bg-gradient-to-r from-green-400 to-emerald-500" : "bg-gradient-to-r from-blue-400 to-indigo-400 text-white"}`}>
+                  {modalMode === "create" ? "ลุย!" : "เข้าไปแจม!"}
+                </button>
+              </form>
+            </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      <button 
-        onClick={() => setShowRules(true)}
-        className="absolute top-4 right-4 z-20 px-4 py-2 bg-black/40 border border-white/20 rounded-full text-white/90 font-bold hover:bg-white/10 transition-colors backdrop-blur-md"
-      >
-        📖 กติกา
-      </button>
-
-      <div className="w-full max-w-sm relative z-10">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-5xl font-black text-gold drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]">
-            SomomKang
-          </h1>
-          <p className="text-white/80 text-sm mt-2">วงไพ่คนจริง ไม่แน่จริงอย่าเข้ามา</p>
-        </div>
-
-        <div className="bg-black/40 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/10">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-white/90 text-sm font-bold mb-2">ชื่อผู้เล่น</label>
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ใส่ชื่อของคุณ" className="w-full px-4 py-3 rounded-xl bg-white/10 text-white placeholder-white/40 text-base focus:outline-none focus:ring-2 focus:ring-gold border border-white/5" maxLength={20} />
-            </div>
-
-            <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/5">
-              <button type="button" onClick={() => setMode("create")} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "create" ? "bg-gold text-black shadow-[0_0_10px_rgba(250,204,21,0.4)]" : "text-white/60 hover:text-white"}`}>สร้างห้อง</button>
-              <button type="button" onClick={() => setMode("join")} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "join" ? "bg-gold text-black shadow-[0_0_10px_rgba(250,204,21,0.4)]" : "text-white/60 hover:text-white"}`}>เข้าร่วมห้อง</button>
-            </div>
-
-            <div>
-              <label className="block text-white/90 text-sm font-bold mb-2">รหัสห้อง</label>
-              <div className="flex gap-2">
-                <input type="text" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} placeholder={mode === "create" ? "รหัสห้องที่ต้องการ" : "ใส่รหัสห้อง"} className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white placeholder-white/40 text-base uppercase focus:outline-none focus:ring-2 focus:ring-gold border border-white/5" maxLength={8} />
-                {mode === "create" && <button type="button" onClick={generateRoomId} className="px-4 py-3 rounded-xl bg-gold/20 text-gold font-bold hover:bg-gold/30 transition-colors border border-gold/40">สุ่ม</button>}
-              </div>
-            </div>
-
-            {mode === "create" && (
-              <div>
-                <label className="block text-white/90 text-sm font-bold mb-2">จำนวนผู้เล่นสูงสุด</label>
-                <select value={maxPlayers} onChange={(e) => setMaxPlayers(parseInt(e.target.value))} className="w-full px-4 py-3 rounded-xl bg-white/10 text-white text-base focus:outline-none focus:ring-2 focus:ring-gold border border-white/5 [&>option]:bg-gray-900">
-                  {[2, 3, 4, 5, 6].map((num) => <option key={num} value={num}>{num} คน</option>)}
-                </select>
-              </div>
-            )}
-
-            {error && <p className="text-red-400 text-sm font-bold text-center bg-red-500/10 py-2 rounded-lg border border-red-500/20">{error}</p>}
-            <button type="submit" className="w-full py-4 rounded-xl bg-gradient-to-r from-gold to-amber-500 text-black font-black text-lg hover:from-amber-400 hover:to-yellow-500 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(250,204,21,0.3)] mt-2">
-              {mode === "create" ? "เปิดวงไพ่!" : "บุกเข้าห้อง!"}
-            </button>
-          </form>
-        </div>
-      </div>
-      <AnimatePresence>
-        {showRules && <RulesModal onClose={() => setShowRules(false)} />}
       </AnimatePresence>
     </div>
   );
