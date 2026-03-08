@@ -240,11 +240,11 @@ export default function GameBoard({ roomId = "Demo", username = "คุณ" }: G
     });
   }, [isMuted]);
 
-  const selectedRanks = selectedIds.size > 0 ? hand.filter((c) => selectedIds.has(c.id)).map((c) => c.rank) : [];
   const shouldDim = useCallback((card: CardData): boolean => {
     if (selectedIds.size === 0) return false;
-    return !selectedRanks.includes(card.rank);
-  }, [selectedIds, selectedRanks]);
+    const currentSelectedRanks = hand.filter((c) => selectedIds.has(c.id)).map((c) => c.rank);
+    return !currentSelectedRanks.includes(card.rank);
+  }, [selectedIds, hand]);
 
   const opponents = publicState && myPlayerId ? publicState.players.filter((p) => p.id !== myPlayerId) : [];
   const myPlayerData = publicState?.players.find(p => p.id === myPlayerId);
