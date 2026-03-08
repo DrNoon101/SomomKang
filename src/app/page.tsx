@@ -10,8 +10,13 @@ export default function GameHub() {
   const [somomkangModal, setSomomkangModal] = useState<"create" | "join" | null>(null);
   const [yamstoryModal, setYamstoryModal] = useState<"create" | "join" | null>(null);
   
+  // ตั้งค่าเกมไพ่
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [rounds, setRounds] = useState(1);
+
+  // ✨ ตั้งค่าเกมนิยายยำเละ (เพิ่มมาใหม่!)
+  const [yamMaxPlayers, setYamMaxPlayers] = useState(4);
+  const [yamRounds, setYamRounds] = useState(5);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -62,6 +67,13 @@ export default function GameHub() {
       return;
     }
     sessionStorage.setItem("somomkang_mode", yamstoryModal || "join");
+    
+    // ✨ เซฟการตั้งค่าเกมนิยายลงเครื่องตอนสร้างห้อง
+    if (yamstoryModal === "create") {
+      sessionStorage.setItem("yamstory_maxPlayers", yamMaxPlayers.toString());
+      sessionStorage.setItem("yamstory_rounds", yamRounds.toString());
+    }
+    
     window.location.href = `/yamstory?room=${roomId.trim()}`;
   };
 
@@ -90,7 +102,7 @@ export default function GameHub() {
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
-              <h2 className="text-white font-black text-xl">SomomKang</h2>
+              <h2 className="text-white font-black text-xl">{username ? `${username}'s Card` : "SomomKang"}</h2>
               <p className="text-white/60 text-xs mt-1">ดวลเดือด น็อคมืด สาดอีโมจิ</p>
             </div>
             <div className="flex gap-2 w-full">
@@ -116,24 +128,21 @@ export default function GameHub() {
       <AnimatePresence>
         
         {/* ------------------------------------------- */}
-        {/* กล่อง SomomKang (มีตั้งค่า) */}
+        {/* กล่อง SomomKang */}
         {/* ------------------------------------------- */}
         {somomkangModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSomomkangModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-green-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
               <button type="button" onClick={() => setSomomkangModal(null)} className="absolute top-4 right-4 text-white/50 hover:text-white text-xl">✕</button>
-              
               <h2 className="text-2xl font-black text-white text-center mb-6">
                 {somomkangModal === "create" ? "👑 สร้างวงไพ่" : "🚪 เข้าร่วมวงไพ่"}
                 <div className="text-sm mt-1 font-medium text-green-400">เกม: SomomKang</div>
               </h2>
-              
               <div className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง</label>
                   <input type="text" placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") executeSomomkang(); }} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-green-500 uppercase text-center text-xl tracking-widest" />
                 </div>
-                
                 {somomkangModal === "create" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -154,7 +163,6 @@ export default function GameHub() {
                     </div>
                   </div>
                 )}
-
                 <button type="button" onClick={executeSomomkang} className="w-full py-4 rounded-xl text-black font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 bg-gradient-to-r from-green-400 to-emerald-500">
                   {somomkangModal === "create" ? "สับไพ่ลุย!" : "เข้าไปแจม!"}
                 </button>
@@ -164,24 +172,46 @@ export default function GameHub() {
         )}
 
         {/* ------------------------------------------- */}
-        {/* กล่องเกมนิยาย (ไม่มีตั้งค่า) */}
+        {/* ✨ กล่องเกมนิยาย (เพิ่มตั้งค่าแล้ว!) */}
         {/* ------------------------------------------- */}
         {yamstoryModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setYamstoryModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
               <button type="button" onClick={() => setYamstoryModal(null)} className="absolute top-4 right-4 text-white/50 hover:text-white text-xl">✕</button>
-              
               <h2 className="text-2xl font-black text-white text-center mb-6">
                 {yamstoryModal === "create" ? "📖 สร้างกระดาษใหม่" : "🚪 เข้าร่วมห้องนิยาย"}
                 <div className="text-sm mt-1 font-medium text-blue-400">เกม: นิยายยำเละ</div>
               </h2>
-              
               <div className="space-y-4">
                 <div>
                   <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง</label>
                   <input type="text" placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") executeYamstory(); }} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-blue-500 uppercase text-center text-xl tracking-widest" />
                 </div>
                 
+                {/* ✨ ดรอปดาวน์ตั้งค่า โผล่เฉพาะตอนสร้างห้อง */}
+                {yamstoryModal === "create" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-white/70 text-sm font-bold mb-2">นักเขียนสูงสุด</label>
+                      <select value={yamMaxPlayers} onChange={(e) => setYamMaxPlayers(Number(e.target.value))} className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white outline-none">
+                        <option value={2}>2 คน</option>
+                        <option value={3}>3 คน</option>
+                        <option value={4}>4 คน</option>
+                        <option value={5}>5 คน</option>
+                        <option value={6}>6 คน</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-white/70 text-sm font-bold mb-2">จำนวนรอบ</label>
+                      <select value={yamRounds} onChange={(e) => setYamRounds(Number(e.target.value))} className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white outline-none">
+                        <option value={3}>3 รอบ</option>
+                        <option value={5}>5 รอบ</option>
+                        <option value={10}>10 รอบ</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 <button type="button" onClick={executeYamstory} className="w-full py-4 rounded-xl text-white font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 bg-gradient-to-r from-blue-400 to-indigo-400">
                   {yamstoryModal === "create" ? "เริ่มเปิดเรื่อง!" : "หยิบปากกาแจมด้วย!"}
                 </button>
