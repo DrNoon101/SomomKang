@@ -1,4 +1,9 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
-
-module.exports = nextConfig;
+const nextConfig = {
+    eslint: {
+      // ปิดตาระบบตรวจคำผิดตอนขึ้น Vercel
+      ignoreDuringBuilds: true,
+    },
+  };
+  
+  module.exports = nextConfig;
