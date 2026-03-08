@@ -183,7 +183,7 @@ function resolveKang(roomId, callerId) {
 }
 
 // ==========================================
-// ✍️ ระบบเกม: นิยายยำเละ (Yamstory) ✨ อัปเกรดนับรอบ!
+// ✍️ ระบบเกม: นิยายยำเละ (Yamstory)
 // ==========================================
 const yamRooms = new Map();
 
@@ -191,17 +191,8 @@ function getOrCreateYamRoom(roomId) {
   let room = yamRooms.get(roomId);
   if (!room) {
     room = { 
-      id: roomId, 
-      hostId: null, 
-      status: "waiting", 
-      players: [], 
-      currentTurnIndex: null, 
-      lastWords: "", 
-      turnCount: 0, 
-      fullStory: [],
-      maxPlayers: 4, // ค่าเริ่มต้น
-      maxRounds: 5,  // ค่าเริ่มต้น
-      currentRound: 1 
+      id: roomId, hostId: null, status: "waiting", players: [], currentTurnIndex: null, lastWords: "", turnCount: 0, fullStory: [],
+      maxPlayers: 4, maxRounds: 5, currentRound: 1 
     };
     yamRooms.set(roomId, room);
   }
@@ -212,17 +203,7 @@ function broadcastYamState(roomId) {
   const room = yamRooms.get(roomId);
   if (!room) return;
   const state = {
-    roomId: room.id,
-    hostId: room.hostId,
-    status: room.status,
-    players: room.players,
-    currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null,
-    lastWords: room.lastWords,
-    turnCount: room.turnCount,
-    maxPlayers: room.maxPlayers,
-    maxRounds: room.maxRounds,
-    currentRound: room.currentRound,
-    fullStory: room.status === "ended" ? room.fullStory : undefined
+    roomId: room.id, hostId: room.hostId, status: room.status, players: room.players, currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null, lastWords: room.lastWords, turnCount: room.turnCount, maxPlayers: room.maxPlayers, maxRounds: room.maxRounds, currentRound: room.currentRound, fullStory: room.status === "ended" ? room.fullStory : undefined
   };
   io.to(`yam_${roomId}`).emit("yam_state", state);
 }
@@ -232,32 +213,25 @@ function broadcastYamState(roomId) {
 // ==========================================
 io.on("connection", (socket) => {
   
-  // --- ฝั่งสมมแคง ---
+  // --- สมมแคง ---
   socket.on("join_room", ({ roomId, username, maxPlayers }) => {
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เล่น";
     const room = getOrCreateRoom(roomId);
     if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
     let existingPlayer = room.players.find(p => p.name === safeName);
-    
     if (existingPlayer) {
       if (room.hostId === existingPlayer.id) room.hostId = socket.id;
-      if (room.winnerId === existingPlayer.id) room.winnerId = socket.id;
-      if (room.pendingFlow?.fromPlayerId === existingPlayer.id) room.pendingFlow.fromPlayerId = socket.id;
-      if (room.pendingFlow?.toPlayerId === existingPlayer.id) room.pendingFlow.toPlayerId = socket.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
+      existingPlayer.id = socket.id; existingPlayer.connected = true;
     } else {
-      if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว ไม่สามารถเข้าร่วมได้");
+      if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว");
       if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); 
       room.players.push({ id: socket.id, name: safeName, hand: [], connected: true, chips: 1000, roundChipsChange: 0 });
     }
     socket.join(roomId); socket.data.roomId = roomId; broadcastState(roomId);
   });
-
   socket.on("start_game", ({ roomId }) => { const room = rooms.get(roomId); if (room?.status === "waiting" && room.hostId === socket.id) startGame(roomId); });
   socket.on("play_again", ({ roomId }) => { const room = rooms.get(roomId); if (room?.status === "ended" && room.hostId === socket.id) resetRoom(roomId); });
-  
   socket.on("draw_and_discard", ({ roomId, discardCardIds }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== "playing") return;
@@ -266,143 +240,64 @@ io.on("connection", (socket) => {
     const player = room.players[playerIndex];
     if (room.pendingFlow && room.pendingFlow.toPlayerId === socket.id) room.pendingFlow = null;
     if (room.drawPile.length === 0) return;
-
-    const drawnCard = room.drawPile.shift();
-    if (drawnCard) player.hand.push(drawnCard);
-
+    const drawnCard = room.drawPile.shift(); if (drawnCard) player.hand.push(drawnCard);
     const cardsToDiscard = [];
-    for (const cardId of discardCardIds || []) {
-      const card = player.hand.find((c) => c.id === cardId);
-      if (!card) return;
-      cardsToDiscard.push(card);
-    }
+    for (const cardId of discardCardIds || []) { const card = player.hand.find((c) => c.id === cardId); if (!card) return; cardsToDiscard.push(card); }
     if (cardsToDiscard.length === 0) return;
-    const rank = cardsToDiscard[0].rank;
-    if (!cardsToDiscard.every((c) => c.rank === rank)) return;
-
-    for (const card of cardsToDiscard) {
-      player.hand = player.hand.filter((c) => c.id !== card.id);
-      room.discardPile.push(card);
-    }
-
-    if (player.hand.length === 0) {
-      room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand";
-      distributeChips(room); broadcastState(roomId); return;
-    }
-
+    const rank = cardsToDiscard[0].rank; if (!cardsToDiscard.every((c) => c.rank === rank)) return;
+    for (const card of cardsToDiscard) { player.hand = player.hand.filter((c) => c.id !== card.id); room.discardPile.push(card); }
+    if (player.hand.length === 0) { room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand"; distributeChips(room); broadcastState(roomId); return; }
     const lastDiscard = room.discardPile[room.discardPile.length - 1];
     if (lastDiscard) {
       const nextIndex = getNextPlayerIndex(room, playerIndex);
-      if (nextIndex != null) {
-        const nextPlayer = room.players[nextIndex];
-        room.pendingFlow = { rank: lastDiscard.rank, fromPlayerId: player.id, toPlayerId: nextPlayer.id };
-        io.to(nextPlayer.id).emit("flow_available", { roomId, rank: lastDiscard.rank, fromPlayerId: player.id });
-      }
+      if (nextIndex != null) { const nextPlayer = room.players[nextIndex]; room.pendingFlow = { rank: lastDiscard.rank, fromPlayerId: player.id, toPlayerId: nextPlayer.id }; io.to(nextPlayer.id).emit("flow_available", { roomId, rank: lastDiscard.rank, fromPlayerId: player.id }); }
     }
     const nextIndex = getNextPlayerIndex(room, playerIndex);
-    if (nextIndex != null) room.currentTurnIndex = nextIndex;
-    broadcastState(roomId);
+    if (nextIndex != null) room.currentTurnIndex = nextIndex; broadcastState(roomId);
   });
-
   socket.on("kang", ({ roomId }) => {
-    const room = rooms.get(roomId);
-    if (!room || room.status !== "playing") return;
-    const playerIndex = room.players.findIndex((p) => p.id === socket.id);
-    if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+    const room = rooms.get(roomId); if (!room || room.status !== "playing") return;
+    const playerIndex = room.players.findIndex((p) => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
     resolveKang(roomId, socket.id);
   });
-
   socket.on("flow_discard", ({ roomId, cardIds }) => {
-    const room = rooms.get(roomId);
-    if (!room || !room.pendingFlow || room.pendingFlow.toPlayerId !== socket.id) return;
-    const player = getPlayer(room, socket.id);
-    if (!player) return;
-
+    const room = rooms.get(roomId); if (!room || !room.pendingFlow || room.pendingFlow.toPlayerId !== socket.id) return;
+    const player = getPlayer(room, socket.id); if (!player) return;
     const cardsToDiscard = [];
-    for (const cardId of cardIds) {
-      const card = player.hand.find((c) => c.id === cardId);
-      if (!card) return;
-      cardsToDiscard.push(card);
-    }
+    for (const cardId of cardIds) { const card = player.hand.find((c) => c.id === cardId); if (!card) return; cardsToDiscard.push(card); }
     if (cardsToDiscard.length === 0 || !cardsToDiscard.every((c) => c.rank === room.pendingFlow.rank)) return;
-
     const victim = getPlayer(room, room.pendingFlow.fromPlayerId);
     const FLOW_PENALTY = 25 * cardsToDiscard.length;
-    if (victim) {
-      victim.chips -= FLOW_PENALTY;
-      player.chips += FLOW_PENALTY;
-      io.to(victim.id).emit("got_flowed_mock");
+    if (victim) { victim.chips -= FLOW_PENALTY; player.chips += FLOW_PENALTY; io.to(victim.id).emit("got_flowed_mock"); }
+    for (const card of cardsToDiscard) { player.hand = player.hand.filter((c) => c.id !== card.id); room.discardPile.push(card); }
+    if (player.hand.length === 0) { room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand"; distributeChips(room); io.to(room.id).emit("flow_win", { winnerId: player.id, rank: room.pendingFlow.rank }); } else {
+      const playerIndex = room.players.findIndex((p) => p.id === player.id); const nextIndex = getNextPlayerIndex(room, playerIndex); if (nextIndex != null) room.currentTurnIndex = nextIndex;
     }
-
-    for (const card of cardsToDiscard) {
-      player.hand = player.hand.filter((c) => c.id !== card.id);
-      room.discardPile.push(card);
-    }
-
-    if (player.hand.length === 0) {
-      room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand";
-      distributeChips(room);
-      io.to(room.id).emit("flow_win", { winnerId: player.id, rank: room.pendingFlow.rank });
-    } else {
-      const playerIndex = room.players.findIndex((p) => p.id === player.id);
-      const nextIndex = getNextPlayerIndex(room, playerIndex);
-      if (nextIndex != null) room.currentTurnIndex = nextIndex;
-    }
-    room.pendingFlow = null;
-    broadcastState(roomId);
+    room.pendingFlow = null; broadcastState(roomId);
   });
+  socket.on("send_emote", ({ roomId, emote }) => { io.to(roomId).emit("receive_emote", { playerId: socket.id, emote }); });
 
-  socket.on("send_emote", ({ roomId, emote }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-    io.to(roomId).emit("receive_emote", { playerId: socket.id, emote });
-  });
-
-  // --- ฝั่งนิยายยำเละ ✨ อัปเกรดรับค่าตั้งค่า ---
+  // --- นิยายยำเละ ---
   socket.on("join_yam_room", ({ roomId, username, maxPlayers, maxRounds }) => {
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "นักเขียนนิรนาม";
     const room = getOrCreateYamRoom(roomId);
-    
-    // ถ้าห้องเพิ่งสร้าง ให้ตั้งค่าตามที่ Host โยนมา
-    if (room.players.length === 0) { 
-      room.hostId = socket.id; 
-      if (maxPlayers) room.maxPlayers = maxPlayers;
-      if (maxRounds) room.maxRounds = maxRounds;
-    }
-
+    if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; if (maxRounds) room.maxRounds = maxRounds; }
     let existingPlayer = room.players.find(p => p.name === safeName);
     if (existingPlayer) {
       if (room.hostId === existingPlayer.id) room.hostId = socket.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
+      existingPlayer.id = socket.id; existingPlayer.connected = true;
     } else {
-      // 🛡️ เช็คว่าห้องเต็มหรือยัง
-      if (room.players.length >= room.maxPlayers) {
-        socket.emit("yam_error", { message: "ห้องนิยายเต็มแล้วครับลูกพี่! เคาะเรียกให้เพื่อนเปิดห้องใหม่นะ" });
-        return;
-      }
-      if (room.status !== "waiting") {
-         socket.emit("yam_error", { message: "เพื่อนเริ่มแต่งนิยายกันไปแล้วครับลูกพี่!" });
-         return;
-      }
+      if (room.players.length >= room.maxPlayers) { socket.emit("yam_error", { message: "ห้องนิยายเต็มแล้วครับ!" }); return; }
+      if (room.status !== "waiting") { socket.emit("yam_error", { message: "เพื่อนเริ่มแต่งนิยายกันไปแล้ว!" }); return; }
       room.players.push({ id: socket.id, name: safeName, connected: true });
     }
-
-    socket.join(`yam_${roomId}`);
-    socket.data.yamRoomId = roomId;
-    broadcastYamState(roomId);
+    socket.join(`yam_${roomId}`); socket.data.yamRoomId = roomId; broadcastYamState(roomId);
   });
 
   socket.on("start_yam_game", ({ roomId }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
-    room.status = "playing";
-    room.currentTurnIndex = 0;
-    room.turnCount = 0;
-    room.currentRound = 1; // เริ่มนับรอบที่ 1
-    room.lastWords = "";
-    room.fullStory = [];
+    const room = yamRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
+    room.status = "playing"; room.currentTurnIndex = 0; room.turnCount = 0; room.currentRound = 1; room.lastWords = ""; room.fullStory = [];
     broadcastYamState(roomId);
   });
 
@@ -414,88 +309,48 @@ io.on("connection", (socket) => {
     if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
 
     const player = room.players[playerIndex];
-    room.fullStory.push({ playerId: player.id, playerName: player.name, text: text.trim() });
-
-    const words = text.trim().split(/\s+/);
-    room.lastWords = words.slice(-5).join(" ");
-
-    // ✨ ระบบนับรอบอัตโนมัติ 
-    room.turnCount++;
+    const cleanText = text.trim();
     
-    // ถ้าทุกคนเล่นครบ 1 วน ถือว่าจบ 1 รอบ
-    if (room.turnCount % room.players.length === 0) {
-      room.currentRound++;
+    // บันทึกข้อความเต็มๆ ของรอบนี้
+    room.fullStory.push({ playerId: player.id, playerName: player.name, text: cleanText });
+
+    // ✨ ระบบหั่นข้อความภาษาไทย! (ฉบับแก้ปัญหาคนไม่เว้นวรรค)
+    try {
+      // ใช้ระบบ AI แบ่งคำของ Javascript
+      const segmenter = new Intl.Segmenter('th-TH', { granularity: 'word' });
+      const segments = Array.from(segmenter.segment(cleanText));
+      
+      if (segments.length <= 5) {
+        room.lastWords = cleanText; // ถ้าพิมพ์มาสั้นๆ ก็เอาไปหมดเลย
+      } else {
+        // หั่นเอาแค่ 5 ส่วนสุดท้าย
+        room.lastWords = "..." + segments.slice(-5).map(s => s.segment).join("");
+      }
+    } catch (error) {
+      // 🛡️ ท่าไม้ตายสำรอง: ถ้า Server งง ให้ตัดทื่อๆ เอา 30 ตัวอักษรสุดท้ายไปเลย!
+      room.lastWords = cleanText.length > 30 ? "..." + cleanText.slice(-30) : cleanText;
     }
 
-    // เช็คว่าจบรอบที่ตั้งไว้หรือยัง?
+    room.turnCount++;
+    if (room.turnCount % room.players.length === 0) { room.currentRound++; }
+
     if (room.currentRound > room.maxRounds) {
-      room.status = "ended"; // สั่งจบเกมทันที!
+      room.status = "ended";
     } else {
-      // ถ้ายังไม่ครบ เลื่อนตาเล่นให้คนถัดไป
       room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
     }
-    
     broadcastYamState(roomId);
   });
 
-  socket.on("end_yam_game", ({ roomId }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
-    room.status = "ended";
-    broadcastYamState(roomId);
-  });
+  socket.on("end_yam_game", ({ roomId }) => { const room = yamRooms.get(roomId); if (!room || room.hostId !== socket.id) return; room.status = "ended"; broadcastYamState(roomId); });
+  socket.on("reset_yam_game", ({ roomId }) => { const room = yamRooms.get(roomId); if (!room || room.hostId !== socket.id) return; room.status = "waiting"; room.lastWords = ""; room.turnCount = 0; room.currentRound = 1; room.fullStory = []; broadcastYamState(roomId); });
 
-  socket.on("reset_yam_game", ({ roomId }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
-    room.status = "waiting";
-    room.lastWords = "";
-    room.turnCount = 0;
-    room.currentRound = 1;
-    room.fullStory = [];
-    broadcastYamState(roomId);
-  });
-
-  // --- จัดการตอนเน็ตหลุด ---
   socket.on("disconnect", () => {
     const roomId = socket.data.roomId;
-    if (roomId) {
-      const room = rooms.get(roomId);
-      if (room) {
-        const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex !== -1) {
-          if (room.status === "waiting") room.players.splice(playerIndex, 1);
-          else room.players[playerIndex].connected = false;
-        }
-        if (room.hostId === socket.id) {
-          const nextHost = room.players.find(p => p.connected);
-          room.hostId = nextHost ? nextHost.id : null;
-        }
-        if (room.players.length === 0) rooms.delete(roomId);
-        else broadcastState(roomId);
-      }
-    }
-
+    if (roomId) { const room = rooms.get(roomId); if (room) { const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex !== -1) { if (room.status === "waiting") room.players.splice(playerIndex, 1); else room.players[playerIndex].connected = false; } if (room.hostId === socket.id) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (room.players.length === 0) rooms.delete(roomId); else broadcastState(roomId); } }
     const yamRoomId = socket.data.yamRoomId;
-    if (yamRoomId) {
-      const room = yamRooms.get(yamRoomId);
-      if (room) {
-        const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex !== -1) {
-          if (room.status === "waiting") room.players.splice(playerIndex, 1);
-          else room.players[playerIndex].connected = false;
-        }
-        if (room.hostId === socket.id) {
-          const nextHost = room.players.find(p => p.connected);
-          room.hostId = nextHost ? nextHost.id : null;
-        }
-        if (room.players.length === 0) yamRooms.delete(yamRoomId);
-        else broadcastYamState(yamRoomId);
-      }
-    }
+    if (yamRoomId) { const room = yamRooms.get(yamRoomId); if (room) { const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex !== -1) { if (room.status === "waiting") room.players.splice(playerIndex, 1); else room.players[playerIndex].connected = false; } if (room.hostId === socket.id) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (room.players.length === 0) yamRooms.delete(yamRoomId); else broadcastYamState(yamRoomId); } }
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Arcade Server is running on port ${PORT}`);
-});
+httpServer.listen(PORT, () => { console.log(`Arcade Server is running on port ${PORT}`); });
