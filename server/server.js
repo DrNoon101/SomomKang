@@ -13,7 +13,7 @@ const io = new Server(httpServer, { cors: { origin: "*", methods: ["GET", "POST"
 app.get("/", (req, res) => res.send("Arcade Server is running. (SomomKang + Yamstory)"));
 
 // ==========================================
-// 🃏 ระบบเกม: สมมแคง (SomomKang)
+// 🃏 ระบบเกม: SomomKang
 // ==========================================
 const SUITS = ["spades", "hearts", "diamonds", "clubs"]; 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -183,14 +183,26 @@ function resolveKang(roomId, callerId) {
 }
 
 // ==========================================
-// ✍️ ระบบเกม: นิยายยำเละ (Yamstory)
+// ✍️ ระบบเกม: นิยายยำเละ (Yamstory) ✨ อัปเกรดนับรอบ!
 // ==========================================
 const yamRooms = new Map();
 
 function getOrCreateYamRoom(roomId) {
   let room = yamRooms.get(roomId);
   if (!room) {
-    room = { id: roomId, hostId: null, status: "waiting", players: [], currentTurnIndex: null, lastWords: "", turnCount: 0, fullStory: [], maxPlayers: 4, maxRounds: 3 };
+    room = { 
+      id: roomId, 
+      hostId: null, 
+      status: "waiting", 
+      players: [], 
+      currentTurnIndex: null, 
+      lastWords: "", 
+      turnCount: 0, 
+      fullStory: [],
+      maxPlayers: 4, // ค่าเริ่มต้น
+      maxRounds: 5,  // ค่าเริ่มต้น
+      currentRound: 1 
+    };
     yamRooms.set(roomId, room);
   }
   return room;
@@ -209,18 +221,18 @@ function broadcastYamState(roomId) {
     turnCount: room.turnCount,
     maxPlayers: room.maxPlayers,
     maxRounds: room.maxRounds,
+    currentRound: room.currentRound,
     fullStory: room.status === "ended" ? room.fullStory : undefined
   };
   io.to(`yam_${roomId}`).emit("yam_state", state);
 }
 
-
 // ==========================================
-// 🔌 การจัดการการเชื่อมต่อ Socket.io
+// 🔌 Socket.io Events
 // ==========================================
 io.on("connection", (socket) => {
   
-  // --- ฝั่งสมมแคง (SomomKang) ---
+  // --- ฝั่งสมมแคง ---
   socket.on("join_room", ({ roomId, username, maxPlayers }) => {
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เล่น";
@@ -316,8 +328,6 @@ io.on("connection", (socket) => {
 
     const victim = getPlayer(room, room.pendingFlow.fromPlayerId);
     const FLOW_PENALTY = 25 * cardsToDiscard.length;
-    
-    // หักเงินคนโดนไหล และเพิ่มเงินให้คนไหล
     if (victim) {
       victim.chips -= FLOW_PENALTY;
       player.chips += FLOW_PENALTY;
@@ -329,27 +339,16 @@ io.on("connection", (socket) => {
       room.discardPile.push(card);
     }
 
-    const currentRank = room.pendingFlow.rank;
-
     if (player.hand.length === 0) {
       room.status = "ended"; room.winnerId = player.id; room.endGameReason = "empty_hand";
       distributeChips(room);
-      io.to(room.id).emit("flow_win", { winnerId: player.id, rank: currentRank });
-      room.pendingFlow = null;
+      io.to(room.id).emit("flow_win", { winnerId: player.id, rank: room.pendingFlow.rank });
     } else {
       const playerIndex = room.players.findIndex((p) => p.id === player.id);
       const nextIndex = getNextPlayerIndex(room, playerIndex);
-      
-      // 🔥 ไฮไลต์: ส่งต่อสถานะ "ไหล" ให้คนถัดไปได้เรื่อยๆ!
-      if (nextIndex != null) {
-        const nextPlayer = room.players[nextIndex];
-        room.currentTurnIndex = nextIndex;
-        room.pendingFlow = { rank: currentRank, fromPlayerId: player.id, toPlayerId: nextPlayer.id };
-        io.to(nextPlayer.id).emit("flow_available", { roomId, rank: currentRank, fromPlayerId: player.id });
-      } else {
-        room.pendingFlow = null;
-      }
+      if (nextIndex != null) room.currentTurnIndex = nextIndex;
     }
+    room.pendingFlow = null;
     broadcastState(roomId);
   });
 
@@ -359,14 +358,15 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("receive_emote", { playerId: socket.id, emote });
   });
 
-  // --- ฝั่งนิยายยำเละ (Yamstory) ---
+  // --- ฝั่งนิยายยำเละ ✨ อัปเกรดรับค่าตั้งค่า ---
   socket.on("join_yam_room", ({ roomId, username, maxPlayers, maxRounds }) => {
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "นักเขียนนิรนาม";
     const room = getOrCreateYamRoom(roomId);
     
-    if (room.players.length === 0) {
-      room.hostId = socket.id;
+    // ถ้าห้องเพิ่งสร้าง ให้ตั้งค่าตามที่ Host โยนมา
+    if (room.players.length === 0) { 
+      room.hostId = socket.id; 
       if (maxPlayers) room.maxPlayers = maxPlayers;
       if (maxRounds) room.maxRounds = maxRounds;
     }
@@ -377,8 +377,15 @@ io.on("connection", (socket) => {
       existingPlayer.id = socket.id;
       existingPlayer.connected = true;
     } else {
-      if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว ไม่สามารถเข้าร่วมได้");
-      if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); 
+      // 🛡️ เช็คว่าห้องเต็มหรือยัง
+      if (room.players.length >= room.maxPlayers) {
+        socket.emit("yam_error", { message: "ห้องนิยายเต็มแล้วครับลูกพี่! เคาะเรียกให้เพื่อนเปิดห้องใหม่นะ" });
+        return;
+      }
+      if (room.status !== "waiting") {
+         socket.emit("yam_error", { message: "เพื่อนเริ่มแต่งนิยายกันไปแล้วครับลูกพี่!" });
+         return;
+      }
       room.players.push({ id: socket.id, name: safeName, connected: true });
     }
 
@@ -392,7 +399,8 @@ io.on("connection", (socket) => {
     if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
     room.status = "playing";
     room.currentTurnIndex = 0;
-    room.turnCount = 1;
+    room.turnCount = 0;
+    room.currentRound = 1; // เริ่มนับรอบที่ 1
     room.lastWords = "";
     room.fullStory = [];
     broadcastYamState(roomId);
@@ -408,17 +416,22 @@ io.on("connection", (socket) => {
     const player = room.players[playerIndex];
     room.fullStory.push({ playerId: player.id, playerName: player.name, text: text.trim() });
 
-    const cleanText = text.trim();
-    const cutLength = 30; 
-    room.lastWords = cleanText.length > cutLength 
-      ? "..." + cleanText.substring(cleanText.length - cutLength) 
-      : cleanText;
+    const words = text.trim().split(/\s+/);
+    room.lastWords = words.slice(-5).join(" ");
 
-    // 🛑 ระบบตัดจบอัตโนมัติเมื่อครบจำนวนรอบ (จำนวนคน x จำนวนรอบที่ตั้งไว้)
-    if (room.turnCount >= room.maxRounds * room.players.length) {
-      room.status = "ended";
+    // ✨ ระบบนับรอบอัตโนมัติ 
+    room.turnCount++;
+    
+    // ถ้าทุกคนเล่นครบ 1 วน ถือว่าจบ 1 รอบ
+    if (room.turnCount % room.players.length === 0) {
+      room.currentRound++;
+    }
+
+    // เช็คว่าจบรอบที่ตั้งไว้หรือยัง?
+    if (room.currentRound > room.maxRounds) {
+      room.status = "ended"; // สั่งจบเกมทันที!
     } else {
-      room.turnCount++;
+      // ถ้ายังไม่ครบ เลื่อนตาเล่นให้คนถัดไป
       room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
     }
     
@@ -438,55 +451,13 @@ io.on("connection", (socket) => {
     room.status = "waiting";
     room.lastWords = "";
     room.turnCount = 0;
+    room.currentRound = 1;
     room.fullStory = [];
     broadcastYamState(roomId);
   });
 
-  socket.on("submit_yam_text", ({ roomId, text }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.status !== "playing") return;
-    
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
-
-    const player = room.players[playerIndex];
-    
-    // บันทึกประโยคเต็มๆ ลงสมุดข่อย
-    room.fullStory.push({ playerId: player.id, playerName: player.name, text: text.trim() });
-
-    // ✂️ ตัดข้อความ เอาแค่ 30 ตัวอักษรสุดท้าย (วิธีนี้ชัวร์สุดสำหรับภาษาไทย)
-    const cleanText = text.trim();
-    const cutLength = 30; // ถ้าอยากให้สั้นกว่านี้ ลดตัวเลข 30 ลงได้เลยครับ
-    room.lastWords = cleanText.length > cutLength 
-      ? "..." + cleanText.substring(cleanText.length - cutLength) 
-      : cleanText;
-
-    // เลื่อนตาเล่นให้คนถัดไป
-    room.turnCount++;
-    room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length;
-    broadcastYamState(roomId);
-  });
-
-  socket.on("end_yam_game", ({ roomId }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
-    room.status = "ended";
-    broadcastYamState(roomId);
-  });
-
-  socket.on("reset_yam_game", ({ roomId }) => {
-    const room = yamRooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
-    room.status = "waiting";
-    room.lastWords = "";
-    room.turnCount = 0;
-    room.fullStory = [];
-    broadcastYamState(roomId);
-  });
-
-  // --- จัดการตอนเน็ตหลุด (Disconnect) ---
+  // --- จัดการตอนเน็ตหลุด ---
   socket.on("disconnect", () => {
-    // กรณีหลุดจากห้องสมมแคง
     const roomId = socket.data.roomId;
     if (roomId) {
       const room = rooms.get(roomId);
@@ -505,7 +476,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // กรณีหลุดจากห้องนิยายยำเละ
     const yamRoomId = socket.data.yamRoomId;
     if (yamRoomId) {
       const room = yamRooms.get(yamRoomId);

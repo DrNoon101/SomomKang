@@ -1,150 +1,245 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
-interface YamPlayer { id: string; name: string; connected: boolean; }
-interface StoryEntry { playerId: string; playerName: string; text: string; }
-interface YamState {
-  roomId: string; hostId: string | null; status: "waiting" | "playing" | "ended";
-  players: YamPlayer[]; currentTurnPlayerId: string | null; lastWords: string;
-  turnCount: number; maxPlayers: number; maxRounds: number; fullStory?: StoryEntry[];
+interface Player {
+  id: string;
+  name: string;
+  connected: boolean;
 }
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000";
+interface YamState {
+  roomId: string;
+  hostId: string;
+  status: "waiting" | "playing" | "ended";
+  players: Player[];
+  currentTurnPlayerId: string | null;
+  lastWords: string;
+  turnCount: number;
+  maxPlayers: number;
+  maxRounds: number;
+  currentRound: number;
+  fullStory?: { playerId: string; playerName: string; text: string }[];
+}
 
 export default function YamstoryBoard({ roomId, username }: { roomId: string; username: string }) {
+  const router = useRouter();
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<YamState | null>(null);
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState("กำลังเชื่อมต่อ...");
   const [inputText, setInputText] = useState("");
-  const socketRef = useRef<Socket | null>(null);
+  const storyEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket"] });
-    socketRef.current = socket;
+    const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
+    setSocket(s);
 
-    socket.on("connect", () => {
-      setMyPlayerId(socket.id || null);
-      setStatusMessage("เชื่อมต่อสำเร็จ!");
-      
-      const mode = sessionStorage.getItem("somomkang_mode");
-      const maxP = sessionStorage.getItem("somomkang_maxPlayers");
-      const maxT = sessionStorage.getItem("yam_maxTurns");
+    // ดึงค่าตั้งค่าที่แอบซ่อนไว้ตอนสร้างห้องส่งไปให้ Server
+    const maxPlayers = parseInt(sessionStorage.getItem("yamstory_maxPlayers") || "4");
+    const maxRounds = parseInt(sessionStorage.getItem("yamstory_rounds") || "5");
 
-      socket.emit("join_yam_room", { 
-        roomId, username,
-        maxPlayers: mode === "create" && maxP ? parseInt(maxP) : undefined,
-        maxRounds: mode === "create" && maxT ? parseInt(maxT) : undefined
-      });
+    s.emit("join_yam_room", { roomId, username, maxPlayers, maxRounds });
+
+    s.on("yam_state", (state: YamState) => {
+      setGameState(state);
     });
 
-    socket.on("yam_state", (state: YamState) => setGameState(state));
-    socket.on("error_message", (data: { message: string }) => setStatusMessage(data.message));
+    // รับ Error ถัาห้องเต็ม
+    s.on("yam_error", ({ message }) => {
+      alert(message);
+      router.push("/"); // ดีดกลับหน้าแรก
+    });
 
-    return () => { socket.disconnect(); };
-  }, [roomId, username]);
+    return () => { s.disconnect(); };
+  }, [roomId, username, router]);
 
-  const isHost = gameState?.hostId === myPlayerId;
-  const isMyTurn = gameState?.status === "playing" && gameState.currentTurnPlayerId === myPlayerId;
-  const currentTurnPlayer = gameState?.players.find(p => p.id === gameState.currentTurnPlayerId);
+  useEffect(() => {
+    if (gameState?.status === "ended" && storyEndRef.current) {
+      storyEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [gameState?.status]);
 
-  const handleStartGame = () => { if (socketRef.current && isHost) socketRef.current.emit("start_yam_game", { roomId }); };
+  if (!gameState || !socket) return (
+    <div className="min-h-dvh flex items-center justify-center bg-gray-900 font-sans">
+      <h1 className="text-3xl text-blue-400 font-bold animate-pulse">กำลังกางสมุดข่อย...</h1>
+    </div>
+  );
+
+  const isHost = socket.id === gameState.hostId;
+  const isMyTurn = socket.id === gameState.currentTurnPlayerId;
+  const currentTurnPlayerName = gameState.players.find(p => p.id === gameState.currentTurnPlayerId)?.name || "ใครสักคน";
+
+  const handleStartGame = () => socket.emit("start_yam_game", { roomId });
+  const handleEndGame = () => socket.emit("end_yam_game", { roomId });
+  const handleResetGame = () => socket.emit("reset_yam_game", { roomId });
+
   const handleSubmitText = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !isMyTurn || !socketRef.current) return;
-    socketRef.current.emit("submit_yam_text", { roomId, text: inputText.trim() });
+    if (!inputText.trim()) return;
+    socket.emit("submit_yam_text", { roomId, text: inputText });
     setInputText("");
   };
-  const handleEndGame = () => { if (socketRef.current && isHost) socketRef.current.emit("end_yam_game", { roomId }); };
-  const handlePlayAgain = () => { if (socketRef.current && isHost) socketRef.current.emit("reset_yam_game", { roomId }); };
 
   return (
-    <div className="relative w-full h-dvh bg-slate-900 overflow-hidden flex flex-col items-center justify-center font-sans">
-      <div className="absolute inset-0 opacity-5 pointer-events-none text-[25vw] flex items-center justify-center font-serif text-white/50">✍️</div>
-      <button onClick={() => { window.location.href = "/"; }} className="absolute top-4 left-4 px-4 py-2 bg-black/40 text-white rounded-lg hover:bg-black/60 z-50 text-sm font-bold border border-white/20">← กลับไป Arcade</button>
-      <div className="absolute top-4 right-4 bg-black/40 px-4 py-2 rounded-lg border border-white/10 z-50 text-white/80 text-sm">
-        ห้อง: <span className="text-blue-400 font-bold">{roomId}</span> <span className="hidden sm:inline">| {statusMessage}</span>
-      </div>
-
-      {!gameState ? (
-        <h1 className="text-white font-bold text-2xl animate-pulse">กำลังดึงหน้ากระดาษจากสมองกล...</h1>
-      ) : gameState.status === "waiting" ? (
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10 bg-black/60 p-8 rounded-3xl border border-blue-500/30 backdrop-blur-md text-center max-w-lg w-full shadow-[0_0_40px_rgba(59,130,246,0.2)]">
-          <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 mb-6">นักเขียนในห้องประชุม</h2>
-          <div className="flex flex-wrap gap-3 justify-center mb-8">
-            {gameState.players.map(p => (
-              <span key={p.id} className={`px-4 py-2 rounded-full font-bold shadow-md ${p.id === myPlayerId ? "bg-blue-600 text-white" : "bg-white/10 text-white/80 border border-white/5"}`}>
-                {p.name} {p.id === gameState.hostId && "👑"}
-              </span>
-            ))}
+    <div className="min-h-dvh bg-gray-900 text-white font-sans overflow-hidden flex flex-col relative">
+      
+      {/* ส่วนหัวกระดาน */}
+      <header className="bg-gray-800/80 backdrop-blur-md border-b border-blue-500/30 p-4 sticky top-0 z-40 shadow-lg">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
+              ✍️ นิยายยำเละ
+            </h1>
+            <p className="text-blue-300/70 text-sm font-medium">ห้อง: <span className="text-white font-bold">{roomId}</span> | นามปากกา: {username}</p>
           </div>
-          {isHost ? (
-            <button onClick={handleStartGame} disabled={gameState.players.length < 2} className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-black text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.5)] disabled:opacity-50 disabled:grayscale">
-              เริ่มเปิดเรื่อง! ({gameState.players.length}/{gameState.maxPlayers} คน)
-            </button>
-          ) : (
-            <p className="text-blue-300 animate-pulse font-medium bg-blue-900/30 py-3 rounded-lg">รอเจ้าของห้องเปิดหน้าแรก... ({gameState.players.length}/{gameState.maxPlayers} คน)</p>
+          
+          {/* ✨ โชว์รอบปัจจุบัน */}
+          {gameState.status === "playing" && (
+            <div className="bg-blue-900/50 px-4 py-2 rounded-xl border border-blue-500/50 shadow-inner">
+              <span className="text-blue-200 font-bold text-sm">รอบที่ </span>
+              <span className="text-2xl font-black text-white">{gameState.currentRound}</span>
+              <span className="text-blue-400 font-bold"> / {gameState.maxRounds}</span>
+            </div>
           )}
-        </motion.div>
-      ) : gameState.status === "playing" ? (
-        <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="z-10 w-full max-w-2xl px-4 flex flex-col gap-6 items-center">
-          <div className="text-center bg-black/60 px-8 py-3 rounded-full border border-blue-500/30 backdrop-blur-sm shadow-lg">
-            <span className="text-white/80 text-lg">
-              รอบที่ <span className="text-blue-400 font-black text-2xl">{Math.ceil(gameState.turnCount / gameState.players.length)}/{gameState.maxRounds}</span> | ตาของ: <span className="text-gold font-black text-2xl animate-pulse">{currentTurnPlayer?.name}</span>
-            </span>
-          </div>
+        </div>
+      </header>
 
-          {isMyTurn ? (
-            <form onSubmit={handleSubmitText} className="w-full bg-black/70 p-6 sm:p-8 rounded-3xl border-2 border-blue-500/50 backdrop-blur-md shadow-[0_0_30px_rgba(59,130,246,0.3)] flex flex-col gap-6">
-              <div className="text-center bg-white/5 p-4 rounded-2xl">
-                <p className="text-white/50 text-sm mb-2 font-bold">เพื่อนคนก่อนหน้าทิ้งคำใบ้ไว้ว่า...</p>
-                <h3 className="text-2xl sm:text-3xl font-serif text-white italic border-l-4 border-blue-500 pl-4 py-2">
-                  "{gameState.lastWords || "เริ่มเปิดเรื่องราวได้เลย!"}"
-                </h3>
+      <main className="flex-1 w-full max-w-4xl mx-auto p-4 flex flex-col gap-6 h-full overflow-y-auto pb-32 z-10">
+        
+        {/* หน้าจอรอก่อนเริ่มเกม */}
+        {gameState.status === "waiting" && (
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-gray-800 border-2 border-blue-500/30 rounded-3xl p-6 sm:p-10 shadow-2xl text-center flex flex-col items-center gap-6 mt-10">
+            <div className="text-6xl">📖</div>
+            <h2 className="text-3xl font-black text-white">รอเพื่อนร่วมโต๊ะนักเขียน</h2>
+            
+            <div className="flex gap-4">
+              <div className="bg-gray-900 px-4 py-2 rounded-lg border border-white/10">
+                <span className="text-gray-400 text-xs block">นักเขียนสูงสุด</span>
+                <span className="text-xl font-bold text-blue-400">{gameState.maxPlayers} คน</span>
               </div>
-              <textarea autoFocus required value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="พิมพ์แต่งเรื่องต่อจากคำใบ้เลย! ยิ่งกาวยิ่งดี..." className="w-full h-40 bg-black/50 border-2 border-white/10 rounded-xl p-4 text-white text-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 outline-none resize-none transition-all font-medium" />
-              <button type="submit" className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:scale-[1.02] text-white font-black text-xl rounded-xl transition-transform shadow-[0_0_20px_rgba(79,70,229,0.5)] flex items-center justify-center gap-2">
-                ส่งกระดาษให้คนต่อไป 📝
+              <div className="bg-gray-900 px-4 py-2 rounded-lg border border-white/10">
+                <span className="text-gray-400 text-xs block">ความยาวนิยาย</span>
+                <span className="text-xl font-bold text-indigo-400">{gameState.maxRounds} รอบ</span>
+              </div>
+            </div>
+
+            <div className="w-full max-w-sm bg-gray-900 rounded-2xl p-4 border border-white/10">
+              <h3 className="text-gray-400 font-bold mb-3 text-sm">รายชื่อนักเขียน ({gameState.players.length}/{gameState.maxPlayers})</h3>
+              <ul className="space-y-2">
+                {gameState.players.map((p, i) => (
+                  <li key={p.id} className="flex justify-between items-center bg-gray-800 p-3 rounded-xl">
+                    <span className="font-bold text-lg">{p.name} {p.id === gameState.hostId && "👑"}</span>
+                    <span className={`w-3 h-3 rounded-full ${p.connected ? "bg-green-500 shadow-[0_0_10px_#22c55e]" : "bg-red-500"}`}></span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {isHost ? (
+              <button 
+                onClick={handleStartGame} 
+                disabled={gameState.players.length < 2} 
+                className={`w-full max-w-sm py-4 font-black text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.5)] ${gameState.players.length < 2 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-gradient-to-r from-blue-500 to-indigo-600 hover:scale-105 text-white"}`}
+              >
+                เริ่มเปิดเรื่อง!
               </button>
-            </form>
-          ) : (
-            <div className="bg-black/60 p-12 rounded-3xl border border-white/10 backdrop-blur-md text-center shadow-2xl">
-              <div className="text-7xl mb-6 animate-bounce">🤔</div>
-              <h3 className="text-2xl text-white font-bold">กำลังรอ <span className="text-blue-400">{currentTurnPlayer?.name}</span> ปั่นจินตนาการ...</h3>
-              <p className="text-white/50 mt-3 font-medium">ห้ามแอบชะโงกไปดูจอเพื่อน ปล่อยให้มันมั่วไปเลย!</p>
+            ) : (
+              <div className="text-blue-400 font-bold animate-pulse mt-4">รอหัวหน้าห้องเปิดหน้ากระดาษ...</div>
+            )}
+          </motion.div>
+        )}
+
+        {/* หน้าจอตอนกำลังแต่ง */}
+        {gameState.status === "playing" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6 h-full justify-center mt-10">
+            
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-gray-400 mb-2">ตานี้เป็นของ...</h2>
+              <div className={`text-4xl font-black ${isMyTurn ? "text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-400 scale-110" : "text-white"} transition-all duration-300`}>
+                {isMyTurn ? "🔥 คุณเอง! 🔥" : currentTurnPlayerName}
+              </div>
             </div>
-          )}
-          {isHost && (
-            <button type="button" onClick={handleEndGame} className="mt-4 px-6 py-3 bg-red-500/10 hover:bg-red-500/30 text-red-400 border border-red-500/50 rounded-full font-bold transition-all text-sm">
-              🛑 จบเรื่องก่อนกำหนด (Host)
-            </button>
-          )}
-        </motion.div>
-      ) : (
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10 w-full max-w-4xl px-4 flex flex-col items-center max-h-[90dvh]">
-          <h2 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold to-yellow-300 mb-6 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] text-center">📖 มหากาพย์นิยายยำเละ 📖</h2>
-          <div className="w-full bg-[#fdf6e3] text-slate-900 p-8 sm:p-12 rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-y-auto font-serif leading-loose text-lg sm:text-2xl border-8 border-[#d4c5b0] relative">
-            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "url('https://www.transparenttextures.com/patterns/aged-paper.png')" }}></div>
-            <div className="relative z-10 text-justify indent-12">
-              {gameState.fullStory?.map((entry, idx) => (
-                <span key={idx} className="relative group cursor-help transition-all duration-300 hover:bg-yellow-300/60 rounded px-1">
-                  {entry.text}{" "}
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-sm font-sans px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-xl font-bold before:content-[''] before:absolute before:top-full before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-t-slate-900">
-                    ✍️ เขียนโดย: {entry.playerName}
+
+            <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-blue-500/50 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full"></div>
+              
+              <h3 className="text-blue-300 font-bold mb-4 flex items-center gap-2">
+                <span>คำใบ้จากคนก่อนหน้า</span>
+                <span className="text-xs bg-blue-900/50 px-2 py-1 rounded text-blue-200">5 คำสุดท้าย</span>
+              </h3>
+              
+              <div className="bg-black/40 border border-white/10 rounded-2xl p-6 min-h-[120px] flex items-center justify-center">
+                <p className="text-2xl sm:text-4xl font-black text-white text-center leading-relaxed">
+                  {gameState.lastWords ? `"...${gameState.lastWords}"` : "หน้ากระดาษยังว่างเปล่า..."}
+                </p>
+              </div>
+            </div>
+
+          </motion.div>
+        )}
+
+        {/* หน้าจอตอนจบเกม สรุปเรื่องราว */}
+        {gameState.status === "ended" && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-gray-800 border-2 border-indigo-500/50 rounded-3xl p-6 sm:p-10 shadow-2xl flex flex-col gap-6 mt-4">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🏆</div>
+              <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 drop-shadow-lg">
+                นิยายจบแล้ว!
+              </h2>
+              <p className="text-gray-400 mt-2 font-bold">มาดูผลงานกาวๆ ของพวกคุณกัน</p>
+            </div>
+
+            <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 sm:p-8 mt-4 overflow-y-auto max-h-[50vh] prose prose-invert">
+              <p className="text-xl leading-loose font-medium text-gray-200 indent-8">
+                {gameState.fullStory?.map((item, index) => (
+                  <span key={index} className="hover:bg-blue-900/40 px-1 rounded transition-colors" title={`เขียนโดย: ${item.playerName}`}>
+                    {item.text}{" "}
                   </span>
-                </span>
-              ))}
+                ))}
+              </p>
+              <div ref={storyEndRef} />
             </div>
-          </div>
-          {isHost ? (
-            <button onClick={handlePlayAgain} className="mt-8 px-12 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-black text-xl rounded-xl hover:scale-[1.05] transition-transform shadow-[0_0_30px_rgba(79,70,229,0.5)]">เริ่มแต่งเรื่องใหม่! 🔄</button>
-          ) : (
-            <p className="text-blue-300 mt-8 animate-pulse font-bold bg-black/40 px-6 py-3 rounded-full border border-blue-500/30">รอเจ้าของห้องหยิบกระดาษแผ่นใหม่...</p>
-          )}
-        </motion.div>
-      )}
+
+            {isHost && (
+              <div className="flex gap-4 mt-6">
+                <button onClick={handleResetGame} className="flex-1 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:scale-105 text-white font-black text-xl rounded-xl transition-all shadow-lg">
+                  เขียนเรื่องใหม่!
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+      </main>
+
+      {/* แถบพิมพ์ข้อความ (จะโชว์ก็ต่อเมื่อเป็นตาเรา) */}
+      <AnimatePresence>
+        {gameState.status === "playing" && isMyTurn && (
+          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t-2 border-blue-500 p-4 z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+            <div className="max-w-4xl mx-auto">
+              <form onSubmit={handleSubmitText} className="flex gap-3 relative">
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmitText(e);
+                    }
+                  }}
+                  placeholder="พิมพ์ต่อเลย! ยิ่งกาวยิ่งดี... (กด Enter เพื่อส่ง)"
+                  className="flex-1 bg-black/50 border border-blue-500/50 rounded-2xl px-5 py-4 text-white font-bold text-lg outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/50 resize-none h-[60px] leading-tight"
+                />
+                <button type="submit" disabled={!inputText.trim()} className="px-6 sm:px-10 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-xl rounded-2xl shadow-lg transition-all flex items-center justify-center">
+                  ส่ง!
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
