@@ -389,20 +389,12 @@ io.on("connection", (socket) => {
     // บันทึกประโยคเต็มๆ ลงสมุดข่อย
     room.fullStory.push({ playerId: player.id, playerName: player.name, text: text.trim() });
 
-    // ✂️ หั่นข้อความภาษาไทย แยกคำให้เป๊ะๆ
-    let cutIndex = 0;
-    try {
-      const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
-      const segments = [...segmenter.segment(text.trim())];
-      let wordCount = 0;
-      for (let i = segments.length - 1; i >= 0; i--) {
-        if (segments[i].isWordLike) wordCount++;
-        if (wordCount === 5) { cutIndex = segments[i].index; break; }
-      }
-    } catch (e) {
-      cutIndex = Math.max(0, text.trim().length - 30); // กันเหนียว
-    }
-    room.lastWords = text.trim().substring(cutIndex);
+    // ✂️ ตัดข้อความ เอาแค่ 30 ตัวอักษรสุดท้าย (วิธีนี้ชัวร์สุดสำหรับภาษาไทย)
+    const cleanText = text.trim();
+    const cutLength = 30; // ถ้าอยากให้สั้นกว่านี้ ลดตัวเลข 30 ลงได้เลยครับ
+    room.lastWords = cleanText.length > cutLength 
+      ? "..." + cleanText.substring(cleanText.length - cutLength) 
+      : cleanText;
 
     // เลื่อนตาเล่นให้คนถัดไป
     room.turnCount++;
