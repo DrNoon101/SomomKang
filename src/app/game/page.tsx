@@ -1,39 +1,27 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import GameBoard from "@/components/GameBoard";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import GameBoard from "../../components/GameBoard";
 
-function GameContent() {
+function SomomkangContent() {
   const searchParams = useSearchParams();
-  const roomId = searchParams.get("room") || "Demo";
-  const [username, setUsername] = useState("คุณ");
+  const roomId = searchParams.get("room") || "Lobby";
+  const [username, setUsername] = useState("เซียนไพ่");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setUsername(sessionStorage.getItem("somomkang_username") || "คุณ");
+      setUsername(sessionStorage.getItem("somomkang_username") || "เซียนไพ่");
     }
   }, []);
 
-  return (
-    <div className="relative h-dvh">
-      <GameBoard roomId={roomId} username={username} />
-      {/* Back to Lobby - for Step 1 testing */}
-    </div>
-  );
+  return <GameBoard roomId={roomId} username={username} />;
 }
 
 export default function GamePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="h-dvh flex items-center justify-center bg-felt">
-          <span className="text-gold animate-pulse">กำลังโหลด...</span>
-        </div>
-      }
-    >
-      <GameContent />
+    <Suspense fallback={<div className="h-dvh flex items-center justify-center bg-green-900 text-white font-bold text-xl animate-pulse">กำลังปูเสื่อตั้งวงไพ่...</div>}>
+      <SomomkangContent />
     </Suspense>
   );
 }
