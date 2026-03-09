@@ -12,8 +12,6 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
   const router = useRouter();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<DeckState | null>(null);
-
-  // 🔊 ระบบเสียงแบบปลอดภัย (Client-side)
   const [soundUnlocked, setSoundUnlocked] = useState(false);
   const soundsRef = useRef<Record<string, HTMLAudioElement>>({});
 
@@ -23,7 +21,8 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
         play: new Audio("https://www.soundjay.com/buttons/sounds/button-09.mp3"),
         buy: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
         attack: new Audio("https://www.soundjay.com/mechanical/sounds/explosion-01.mp3"),
-        win: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3")
+        win: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3"),
+        scrap: new Audio("https://www.soundjay.com/nature/sounds/fire-1.mp3") // 🔥 เสียงเผาไพ่
       };
       Object.values(soundsRef.current).forEach(audio => { audio.volume = 0.5; });
     }
@@ -44,12 +43,10 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
     };
     s.on("connect", attemptJoin);
     if (s.connected) attemptJoin();
-    
     s.on("deck_state", (state: DeckState) => {
       setGameState(state);
       if (state.status === "ended") playSound("win");
     });
-    
     s.on("deck_error", (msg) => { alert(msg.message); router.push("/"); });
     return () => { s.disconnect(); };
   }, [roomId, username, router]);
@@ -83,6 +80,8 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
   const handlePlayCard = (cardId: string) => { playSound("play"); socket.emit("play_deck_card", { roomId, cardId }); };
   const handleBuyCard = (cardId: string) => { playSound("buy"); socket.emit("buy_deck_card", { roomId, cardId }); };
   const handleEndTurn = () => { playSound("attack"); socket.emit("end_deck_turn", { roomId }); };
+  // 🔥 ฟังก์ชันยิงคำสั่งเผาไพ่
+  const handleScrapCard = (cardId: string) => { playSound("scrap"); socket.emit("scrap_deck_card", { roomId, cardId }); };
 
   return (
     <div className="min-h-dvh bg-slate-950 text-white font-sans flex flex-col relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] h-dvh overflow-hidden">
@@ -101,7 +100,6 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
         <button onClick={() => router.push("/")} className="bg-red-900/50 text-red-400 px-3 py-1 rounded-lg text-sm font-bold hover:bg-red-600 hover:text-white transition">ออกเกม</button>
       </header>
 
-      {/* --- โหมดจบเกม --- */}
       {gameState.status === "ended" && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="bg-slate-900 border-2 border-cyan-500 p-8 rounded-3xl text-center shadow-[0_0_50px_cyan]">
@@ -112,7 +110,6 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
         </div>
       )}
 
-      {/* --- โหมดรอคน --- */}
       {gameState.status === "waiting" && (
         <main className="flex-1 flex flex-col items-center justify-center p-4 z-10 overflow-y-auto">
           <div className="text-center bg-black/60 p-10 rounded-3xl border border-cyan-900/50 shadow-[0_0_40px_rgba(6,182,212,0.15)]">
@@ -132,16 +129,12 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
         </main>
       )}
 
-      {/* --- โหมดเล่นเกม (สนามรบ) --- */}
       {gameState.status === "playing" && (
         <div className="flex-1 flex flex-col max-w-7xl w-full mx-auto p-2 z-10 overflow-hidden h-full">
-          
           <div className="flex flex-col md:flex-row gap-4 h-full overflow-hidden">
             
-            {/* ซ้าย: บอร์ดเกม */}
             <div className="flex-1 flex flex-col justify-between overflow-hidden">
               
-              {/* ศัตรู */}
               <div className="flex gap-2 overflow-x-auto shrink-0 mb-2">
                 {opponents.map(op => (
                   <div key={op.id} className={`flex-1 min-w-[200px] bg-red-950/30 border-2 ${gameState.currentTurnPlayerId === op.id ? 'border-red-400 shadow-[0_0_15px_red]' : 'border-red-900/50'} rounded-2xl p-3 flex justify-between items-center`}>
@@ -157,7 +150,6 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
                 ))}
               </div>
 
-              {/* ตลาดกลาง */}
               <div className="my-1 p-3 bg-black/60 border border-cyan-900/50 rounded-2xl shrink-0">
                 <div className="flex justify-center gap-2 overflow-x-auto pb-1">
                   {gameState.market.map((card, idx) => {
@@ -177,10 +169,8 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
                 </div>
               </div>
 
-              {/* พื้นที่ของเรา */}
               <div className="flex flex-col gap-2 mt-auto shrink-0">
                 
-                {/* Play Area */}
                 <div className="h-16 sm:h-20 bg-blue-900/20 border border-blue-500/30 rounded-xl flex items-center gap-2 p-2 overflow-x-auto">
                   {me?.playArea && me.playArea.length === 0 && <p className="text-slate-500 text-xs font-bold w-full text-center">ยังไม่ได้เล่นไพ่ในเทิร์นนี้...</p>}
                   {me?.playArea?.map((card, idx) => (
@@ -188,7 +178,6 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
                   ))}
                 </div>
 
-                {/* สเตตัสและปุ่มจบเทิร์น */}
                 <div className="flex justify-between items-end gap-2">
                   <div className="flex gap-2">
                     <div className="bg-green-900/80 border-2 border-green-500 p-2 rounded-xl text-center min-w-[60px]"><p className="text-green-300 text-[9px] font-bold">HP</p><p className="text-xl font-black text-white">{me?.hp}</p></div>
@@ -202,23 +191,38 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
                   )}
                 </div>
                 
-                {/* ไพ่บนมือ */}
                 <div className="bg-slate-900/70 border-t-2 border-slate-600 rounded-t-2xl p-3 flex justify-center gap-2 overflow-x-auto min-h-[140px] sm:min-h-[160px]">
-                  {gameState.myHand?.map((card) => (
-                    <div key={card.id} onClick={() => isMyTurn && handlePlayCard(card.id)} className={`w-24 h-36 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-1.5 relative ${isMyTurn ? "hover:-translate-y-4 cursor-pointer hover:shadow-[0_0_20px_white] transition-transform z-10" : "opacity-80"}`}>
-                      <div className="text-3xl mt-3">{card.emoji}</div>
-                      <div className="text-center w-full leading-tight">
-                        <p className="text-[9px] font-black uppercase truncate">{card.name}</p>
-                        <div className="bg-black/60 mt-0.5 py-0.5 rounded text-[8px] text-white font-bold">{getEffectText(card.effect)}</div>
-                        {card.ally && Object.keys(card.ally).length > 0 && <div className="text-[7px] text-yellow-300 mt-0.5 font-bold">🤝{getEffectText(card.ally)}</div>}
+                  {gameState.myHand?.map((card) => {
+                    const canScrap = isMyTurn && (me?.gold || 0) >= 3;
+                    return (
+                      <div key={card.id} className={`w-24 h-36 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-1.5 relative group ${isMyTurn ? "hover:-translate-y-4 cursor-pointer hover:shadow-[0_0_20px_white] transition-transform z-10" : "opacity-80"}`}>
+                        
+                        {/* 🔥 ปุ่มเผาไพ่ (โผล่มาเฉพาะตอนมีเงิน 3G+) */}
+                        {canScrap && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleScrapCard(card.id); }}
+                            className="absolute -top-3 -left-3 bg-red-600 hover:bg-red-500 text-white rounded-full px-2 py-1 text-[9px] font-black border border-white opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-lg"
+                            title="จ่าย 3 Gold เผาไพ่ทิ้งถาวร"
+                          >
+                            🔥เผา(3G)
+                          </button>
+                        )}
+
+                        <div onClick={() => isMyTurn && handlePlayCard(card.id)} className="w-full h-full flex flex-col items-center justify-between">
+                          <div className="text-3xl mt-2">{card.emoji}</div>
+                          <div className="text-center w-full leading-tight">
+                            <p className="text-[9px] font-black uppercase truncate">{card.name}</p>
+                            <div className="bg-black/60 mt-0.5 py-0.5 rounded text-[8px] text-white font-bold">{getEffectText(card.effect)}</div>
+                            {card.ally && Object.keys(card.ally).length > 0 && <div className="text-[7px] text-yellow-300 mt-0.5 font-bold">🤝{getEffectText(card.ally)}</div>}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            {/* ขวา: Log ประวัติการเล่น (แก้บั๊กจอทะลุแล้ว!) */}
             <div className="hidden md:flex w-64 flex-col bg-black/60 border border-slate-700 rounded-2xl p-3 max-h-[85vh] overflow-hidden">
               <h3 className="text-cyan-400 font-bold text-sm border-b border-slate-700 pb-2 mb-2 shrink-0">📜 บันทึกสงคราม</h3>
               <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1 min-h-0">

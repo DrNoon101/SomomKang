@@ -460,6 +460,26 @@ io.on("connection", (socket) => {
     broadcastDeckState(roomId);
   });
 
+  // --- ลอจิก: ระบบเผาไพ่ทิ้งถาวร (Scrap) ---
+  socket.on("scrap_deck_card", ({ roomId, cardId }) => {
+    const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
+    const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+    const player = room.players[playerIndex]; 
+    
+    // ต้องมีเงินอย่างน้อย 3 Gold ในเทิร์นนี้ถึงจะเผาไพ่ได้
+    if (player.gold < 3) return; 
+    
+    const cardIndex = player.hand.findIndex(c => c.id === cardId); if (cardIndex === -1) return;
+    
+    // หักเงิน 3G แล้วลบไพ่ออกจากมือทิ้งหายไปจากเด็คเลย (ไม่ลงกองทิ้ง)
+    player.gold -= 3;
+    const card = player.hand.splice(cardIndex, 1)[0];
+    
+    if(!room.history) room.history = []; 
+    room.history.unshift(`🔥 ${player.name} จ่าย 3G เผาไพ่ [${card.name}] ทิ้งถาวร! (รีดเด็ค)`); 
+    broadcastDeckState(roomId);
+  });
+
   socket.on("play_deck_card", ({ roomId, cardId }) => {
     const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
     const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
