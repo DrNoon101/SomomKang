@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,58 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
   const [gameState, setGameState] = useState<RacingState | null>(null);
   const [betAmountInput, setBetAmountInput] = useState(500); // ✨ ค่าเริ่มต้นให้แทงตาละ 500
 
+  const hasInteractedRef = useRef(false);
+  const [showSoundHint, setShowSoundHint] = useState(true);
+  const soundsRef = useRef<Record<string, HTMLAudioElement>>({});
+  const soundsInitializedRef = useRef(false);
+  const raceBgmRef = useRef<HTMLAudioElement | null>(null);
+
+  const initSoundsIfNeeded = () => {
+    if (soundsInitializedRef.current) return;
+    if (typeof window === "undefined") return;
+
+    soundsRef.current = {
+      bet: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
+      start: new Audio("https://www.soundjay.com/human/sounds/crowd-cheering-01.mp3"),
+      finish: new Audio("https://www.soundjay.com/human/sounds/applause-4.mp3")
+    };
+
+    Object.values(soundsRef.current).forEach((audio) => {
+      audio.volume = 0.6;
+    });
+
+    raceBgmRef.current = new Audio("https://www.soundjay.com/nature/sounds/horse-gallop-01.mp3");
+    raceBgmRef.current.loop = true;
+    raceBgmRef.current.volume = 0.25;
+
+    soundsInitializedRef.current = true;
+  };
+
+  const playSound = (type: keyof typeof soundsRef.current) => {
+    if (!hasInteractedRef.current) return;
+    if (!soundsInitializedRef.current) initSoundsIfNeeded();
+    const audio = soundsRef.current[type];
+    if (audio) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
+  };
+
+  const startRaceBgm = () => {
+    if (!hasInteractedRef.current) return;
+    if (!soundsInitializedRef.current) initSoundsIfNeeded();
+    if (raceBgmRef.current) {
+      raceBgmRef.current.currentTime = 0;
+      raceBgmRef.current.play().catch(() => {});
+    }
+  };
+
+  const stopRaceBgm = () => {
+    if (raceBgmRef.current) {
+      raceBgmRef.current.pause();
+    }
+  };
+
   useEffect(() => {
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
@@ -24,8 +76,24 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
     s.on("racing_state", (state) => setGameState(state));
     s.on("racing_error", (msg) => { alert(msg.message); router.push("/"); });
 
-    return () => { s.disconnect(); };
+    return () => { 
+      stopRaceBgm();
+      s.disconnect(); 
+    };
   }, [roomId, username, router]);
+
+  useEffect(() => {
+    if (!gameState) return;
+    if (gameState.status === "playing") {
+      startRaceBgm();
+      playSound("start");
+    } else {
+      stopRaceBgm();
+      if (gameState.status === "ended") {
+        playSound("finish");
+      }
+    }
+  }, [gameState?.status]);
 
   if (!gameState || !socket) return null;
 
@@ -34,17 +102,33 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
 
   const handleBet = (racerId: number) => {
     if (gameState.status !== "waiting" || !me || me.chips < betAmountInput) return;
+    hasInteractedRef.current = true;
+    setShowSoundHint(false);
+    initSoundsIfNeeded();
+    playSound("bet");
     socket.emit("place_bet", { roomId, racerId, amount: betAmountInput });
   };
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-orange-950 to-stone-900 text-white font-sans overflow-hidden flex flex-col relative">
+    <div
+      className="min-h-dvh bg-gradient-to-b from-orange-950 to-stone-900 text-white font-sans overflow-hidden flex flex-col relative"
+      onClick={() => {
+        hasInteractedRef.current = true;
+        setShowSoundHint(false);
+        initSoundsIfNeeded();
+      }}
+    >
       
       {/* Header */}
       <header className="bg-black/60 p-4 flex justify-between items-center z-20 border-b border-orange-500/30">
         <div>
           <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">🐎 แข่งม้ามรณะ</h1>
-          <p className="text-orange-300 text-sm">ROOM: {roomId}</p>
+          <p className="text-orange-300 text-sm">
+            ROOM: {roomId}
+            {showSoundHint && (
+              <span className="ml-2 text-yellow-400 animate-pulse">(แตะจอ 1 ครั้งเพื่อเปิดเสียง)</span>
+            )}
+          </p>
         </div>
         <div className="bg-black/50 px-5 py-2 rounded-xl border border-gold/50 flex items-center gap-2 shadow-[0_0_15px_rgba(250,204,21,0.2)]">
           <span className="text-xl">💰</span>
@@ -67,7 +151,9 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
           {/* เส้นชัย */}
           <div className="absolute top-0 bottom-0 right-10 sm:right-20 w-6 bg-[url('https://www.transparenttextures.com/patterns/black-scales.png')] border-l-4 border-r-4 border-white/80 z-0 opacity-90 shadow-[0_0_20px_white]"></div>
 
-          {gameState.racers.map((racer) => (
+          {gameState.racers.map((racer) => {
+            const bettors = gameState.players.filter(p => p.betRacerId === racer.id);
+            return (
             <div key={racer.id} className="relative w-full h-16 sm:h-24 bg-stone-800/80 rounded-full border-2 border-stone-600 flex items-center px-4 overflow-hidden group shadow-inner">
               
               {/* ชื่อนักแข่ง */}
@@ -81,13 +167,18 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
                 animate={{ width: `${racer.progress}%` }} transition={{ ease: "linear", duration: 0.5 }}
               />
 
-              {/* ตัวละคร */}
+              {/* ตัวละคร + คนแทง */}
               <motion.div 
-                className="absolute z-20 text-4xl sm:text-6xl drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]"
+                className="absolute z-20 flex items-center gap-2 sm:gap-3 drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]"
                 animate={{ left: `calc(${racer.progress}% - 30px)`, y: gameState.status === "playing" ? [-5, 5, -5] : 0 }} 
                 transition={{ left: { ease: "linear", duration: 0.5 }, y: { repeat: Infinity, duration: 0.2 } }}
               >
-                {racer.emoji}
+                <span className="text-4xl sm:text-6xl">{racer.emoji}</span>
+                {bettors.length > 0 && (
+                  <div className="px-3 py-1 rounded-full bg-black/70 border border-gold/40 text-xs sm:text-sm font-bold whitespace-nowrap">
+                    {bettors.map(b => b.name).join(", ")}
+                  </div>
+                )}
               </motion.div>
 
               {/* ปุ่มแทง (โชว์เฉพาะตอนรอเล่น) */}
@@ -101,7 +192,7 @@ export default function RacingBoard({ roomId, username }: { roomId: string; user
                 </button>
               )}
             </div>
-          ))}
+          )})}
         </div>
 
         {/* แผงควบคุมด้านล่าง (อัปเกรดใหม่!) */}

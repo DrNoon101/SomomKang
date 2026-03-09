@@ -22,7 +22,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const hasInteractedRef = useRef(false);
   const [showSoundHint, setShowSoundHint] = useState(true);
 
-  // 🔊 โหลดเสียงแบบล่องหน (ไม่ใช้แท็ก <audio> แล้ว หน้าเว็บจะได้ไม่ช็อค!)
+  // 🔊 ระบบเสียงฝั่ง client เท่านั้น
   const soundsRef = useRef<Record<string, HTMLAudioElement>>({});
   const soundsInitializedRef = useRef(false);
 
@@ -32,28 +32,28 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     soundsRef.current = {
       draw: new Audio("https://www.soundjay.com/buttons/sounds/button-20.mp3"),
-      evil: new Audio("https://www.soundjay.com/human/sounds/laughter-01.mp3"),
       jackpot: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3"),
       explode: new Audio("https://www.soundjay.com/mechanical/sounds/explosion-01.mp3"),
       fail: new Audio("https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3"),
+      evil: new Audio("https://www.soundjay.com/human/sounds/laughter-01.mp3"),
       cash: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
       alert: new Audio("https://www.soundjay.com/buttons/sounds/button-10.mp3")
     };
 
-    Object.values(soundsRef.current).forEach(audio => {
+    Object.values(soundsRef.current).forEach((audio) => {
       audio.volume = 0.5;
     });
 
     soundsInitializedRef.current = true;
   };
 
-  const playSound = (type: string) => {
-    if (!hasInteractedRef.current) return; 
+  const playSound = (type: keyof typeof soundsRef.current) => {
+    if (!hasInteractedRef.current) return;
     if (!soundsInitializedRef.current) initSoundsIfNeeded();
     const audio = soundsRef.current[type];
     if (audio) {
       audio.currentTime = 0;
-      audio.play().catch(e => console.log("เสียงถูกบล็อกโดย Browser:", e));
+      audio.play().catch((e) => console.log("เสียงถูกบล็อกโดย Browser:", e));
     }
   };
 
@@ -115,11 +115,11 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
         lastCardIdRef.current = state.lastCard.id;
         const type = state.lastCard.type;
         
-        if (type === 'jackpot' || type === 'lucky_draw') playSound("jackpot");
-        else if (type === 'bankruptcy' || type === 'assassin') playSound("explode");
-        else if (type === 'trip_grass' || type === 'fallen_angel' || type === 'tax') playSound("fail");
-        else if (['communist', 'thanos', 'master_thief', 'leech', 'robbery', 'scapegoat', 'wallet_swap', 'robin_hood'].includes(type || "")) playSound("evil");
-        else if (type === 'normal') {
+        if (type === "jackpot" || type === "lucky_draw") playSound("jackpot");
+        else if (type === "bankruptcy" || type === "assassin") playSound("explode");
+        else if (type === "trip_grass" || type === "fallen_angel" || type === "tax") playSound("fail");
+        else if (["communist", "thanos", "master_thief", "leech", "robbery", "scapegoat", "wallet_swap", "robin_hood"].includes(type || "")) playSound("evil");
+        else if (type === "normal") {
           if (state.lastCard.val && state.lastCard.val > 0) playSound("cash");
           else playSound("fail");
         }
