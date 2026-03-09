@@ -904,6 +904,144 @@ io.on("connection", (socket) => {
 
   socket.on("start_deck_game", ({ roomId }) => {
     const room = deckRooms.get(roomId); 
+// --- ลอจิก: ผู้เล่นลงการ์ดจากมือ ---
+socket.on("play_deck_card", ({ roomId, cardId }) => {
+  const room = deckRooms.get(roomId); 
+  if (!room || room.status !== "playing") return;
+  
+  // เช็คว่าเป็นเทิร์นของตัวเองไหม
+  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
+  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+  const player = room.players[playerIndex];
+  
+  // หาการ์ดในมือ
+  const cardIndex = player.hand.findIndex(c => c.id === cardId); 
+  if (cardIndex === -1) return;
+  const card = player.hand.splice(cardIndex, 1)[0]; // ดึงการ์ดออกจากมือ
+  
+  // 🔥 เช็คระบบ Ally Combo (มีไพ่แฟกชันเดียวกันในโซนเล่นแล้วหรือยัง?)
+  const hasAlly = player.playArea.some(c => c.faction === card.faction && card.faction !== 'starter');
+  
+  // บวกค่าสเตตัสพื้นฐาน (Base Effect)
+  if(card.effect.gold) player.gold += card.effect.gold; 
+  if(card.effect.combat) player.combat += card.effect.combat;
+  if(card.effect.hp) player.hp += card.effect.hp; 
+  if(card.effect.draw) drawDeckCards(player, card.effect.draw);
+  
+  let log = `${player.name} ลงไพ่ [${card.name}]`;
+  
+  // บวกค่าคอมโบ (Ally Effect) ถ้าเงื่อนไขครบ
+  if(hasAlly && card.ally) {
+    if(card.ally.gold) player.gold += card.ally.gold; 
+    if(card.ally.combat) player.combat += card.ally.combat;
+    if(card.ally.hp) player.hp += card.ally.hp; 
+    if(card.ally.draw) drawDeckCards(player, card.ally.draw);
+    log += ` 🔥 (คอมโบ ${card.faction.toUpperCase()} ทำงาน!)`;
+  }
+  
+  // ย้ายการ์ดไปอยู่โซน Play Area (ไพ่ที่เล่นแล้วในเทิร์นนี้)
+  player.playArea.push(card);
+  
+  if(!room.history) room.history = [];
+  room.history.unshift(log); 
+  if(room.history.length > 15) room.history.pop();
+  
+  broadcastDeckState(roomId);
+});
+
+// --- ลอจิก: ซื้อการ์ดจากตลาด ---
+socket.on("buy_deck_card", ({ roomId, cardId }) => {
+  const room = deckRooms.get(roomId); 
+  if (!room || room.status !== "playing") return;
+  
+  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
+  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+  const player = room.players[playerIndex];
+  
+  // หาการ์ดในตลาด
+  const marketIndex = room.market.findIndex(c => c.id === cardId); 
+  if (marketIndex === -1) return;
+  const card = room.market[marketIndex];
+  
+  if (player.gold < card.cost) return; // เงินไม่พอ (กันคนแฮ็กหน้าเว็บมาซื้อ)
+  
+  // หักเงิน แล้วเอาการ์ดเข้ากองทิ้ง (Discard Pile)
+  player.gold -= card.cost; 
+  room.market.splice(marketIndex, 1); 
+  player.discard.push(card);
+  
+  // เติมการ์ดใบใหม่ลงตลาด
+  if(room.marketDeck.length > 0) room.market.push(room.marketDeck.pop()); 
+  
+  if(!room.history) room.history = [];
+  room.history.unshift(`🛒 ${player.name} จ่าย ${card.cost}G ซื้อ [${card.name}]`); 
+  
+  broadcastDeckState(roomId);
+});
+
+// --- ลอจิก: จบเทิร์น & โจมตีศัตรู ---
+socket.on("end_deck_turn", ({ roomId }) => {
+  const room = deckRooms.get(roomId); 
+  if (!room || room.status !== "playing") return;
+  
+  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
+  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+  const player = room.players[playerIndex];
+  
+  // โจมตีคนถัดไป (สาดดาเมจ Combat ทั้งหมดใส่ HP ศัตรู)
+  if (player.combat > 0 && room.players.length > 1) {
+    const targetIndex = (playerIndex + 1) % room.players.length;
+    const target = room.players[targetIndex];
+    target.hp -= player.combat;
+    
+    if(!room.history) room.history = [];
+    room.history.unshift(`⚔️ ${player.name} สาด ${player.combat} ดาเมจใส่ ${target.name}!`);
+    
+    // เช็คว่าศัตรูตายไหม
+    if (target.hp <= 0) { 
+      target.hp = 0; 
+      room.status = "ended"; 
+      room.history.unshift(`🏆 ${player.name} เป็นผู้ชนะ!`); 
+      broadcastDeckState(roomId); 
+      return; 
+    }
+  }
+  
+  // รีเซ็ตค่าพลังในเทิร์น
+  player.gold = 0; 
+  player.combat = 0;
+  
+  // กวาดไพ่บนมือและที่เล่นแล้วลงกองทิ้งทั้งหมด
+  player.discard.push(...player.hand, ...(player.playArea || []));
+  player.hand = []; 
+  player.playArea = [];
+  
+  // จั่วไพ่ใหม่ 5 ใบเตรียมไว้เทิร์นหน้า
+  drawDeckCards(player, 5);
+  
+  // เปลี่ยนเทิร์น
+  room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length; 
+  
+  if(!room.history) room.history = [];
+  room.history.unshift(`⏳ จบเทิร์นของ ${player.name}`);
+  
+  broadcastDeckState(roomId);
+});
+
+// ลอจิก: รีเซ็ตเกมเพื่อเล่นใหม่
+socket.on("reset_deck_game", ({ roomId }) => {
+  const room = deckRooms.get(roomId); 
+  if (!room || room.hostId !== socket.id) return;
+  room.status = "waiting"; 
+  room.market = []; 
+  room.marketDeck = []; 
+  room.history = [];
+  room.players.forEach(p => { 
+      p.hp = 50; p.gold = 0; p.combat = 0; p.deck = []; p.hand = []; p.discard = []; p.playArea = []; 
+  });
+  broadcastDeckState(roomId);
+});
+
     // เช็คสิทธิ์: ต้องเป็นหัวหน้าห้อง และห้องต้องอยู่ในสถานะรอ
     if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
     

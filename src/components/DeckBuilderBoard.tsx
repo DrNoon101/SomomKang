@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 interface Card { id: string; faction: string; name: string; emoji: string; cost: number; effect: any; ally: any; }
 interface Player { id: string; name: string; connected: boolean; hp: number; gold: number; combat: number; deckCount: number; discardCount: number; playArea: Card[]; }
-interface DeckState { roomId: string; hostId: string; status: "waiting" | "playing" | "ended"; maxPlayers: number; market: Card[]; currentTurnPlayerId: string | null; players: Player[]; myHand?: Card[]; }
+interface DeckState { roomId: string; hostId: string; status: "waiting" | "playing" | "ended"; maxPlayers: number; market: Card[]; currentTurnPlayerId: string | null; history?: string[]; players: Player[]; myHand?: Card[]; }
 
 export default function DeckBuilderBoard({ roomId, username }: { roomId: string; username: string }) {
   const router = useRouter();
@@ -30,10 +30,10 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
   if (!gameState || !socket) return <div className="min-h-dvh flex items-center justify-center bg-slate-950 text-white"><div className="text-6xl animate-spin">⚔️</div></div>;
 
   const isHost = socket.id === gameState.hostId;
+  const isMyTurn = socket.id === gameState.currentTurnPlayerId;
   const me = gameState.players.find(p => p.id === socket.id);
   const opponents = gameState.players.filter(p => p.id !== socket.id);
 
-  // ตัวช่วยแสดงสีแฟกชัน
   const getFactionColors = (faction: string) => {
     switch(faction) {
       case 'somom': return "from-red-900 to-red-950 border-red-500 text-red-400";
@@ -55,12 +55,24 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
 
   return (
     <div className="min-h-dvh bg-slate-950 text-white font-sans flex flex-col relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-      <header className="bg-black/80 p-4 flex justify-between items-center z-20 border-b border-cyan-500/30">
+      <header className="bg-black/80 p-3 flex justify-between items-center z-20 border-b border-cyan-500/30">
         <div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">⚔️ Deck Builder</h1>
-          <p className="text-cyan-300 text-sm">ROOM: {roomId} | ผู้เล่น: {username}</p>
+          <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">⚔️ Deck Builder</h1>
+          <p className="text-cyan-300 text-xs">ROOM: {roomId} | ผู้เล่น: {username}</p>
         </div>
+        <button onClick={() => router.push("/")} className="bg-red-900/50 text-red-400 px-3 py-1 rounded-lg text-sm font-bold hover:bg-red-600 hover:text-white transition">ออกเกม</button>
       </header>
+
+      {/* --- โหมดจบเกม --- */}
+      {gameState.status === "ended" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border-2 border-cyan-500 p-8 rounded-3xl text-center shadow-[0_0_50px_cyan]">
+            <h2 className="text-5xl font-black text-cyan-400 mb-4">🏆 จบเกม!</h2>
+            <p className="text-2xl text-white mb-8">{gameState.history?.[0]}</p>
+            {isHost && <button onClick={() => socket.emit("reset_deck_game", { roomId })} className="px-6 py-3 bg-cyan-600 text-white font-bold rounded-xl hover:bg-cyan-500">สับไพ่เล่นใหม่</button>}
+          </div>
+        </div>
+      )}
 
       {/* --- โหมดรอคน --- */}
       {gameState.status === "waiting" && (
@@ -71,76 +83,115 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
               {gameState.players.map((p) => (
                 <div key={p.id} className="bg-slate-800/80 px-6 py-4 rounded-xl border border-slate-600 flex justify-between items-center min-w-[300px]">
                   <span className="font-bold text-xl">{p.name} {p.id === gameState.hostId && "👑"}</span>
-                  <span className={`text-sm font-bold ${p.connected ? 'text-green-400' : 'text-red-400'}`}>{p.connected ? "🟢 พร้อมลุย" : "🔴 เน็ตหลุด"}</span>
+                  <span className={`text-sm font-bold ${p.connected ? 'text-green-400' : 'text-red-400'}`}>{p.connected ? "🟢" : "🔴"}</span>
                 </div>
               ))}
             </div>
             {isHost ? (
-              <button onClick={() => socket.emit("start_deck_game", { roomId })} disabled={gameState.players.length < 2} className="mt-8 px-8 py-4 w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:scale-105 disabled:opacity-50 text-white font-black text-xl rounded-2xl transition-all shadow-lg">
-                เริ่มสับไพ่!
-              </button>
-            ) : (<div className="mt-8 text-cyan-500/70 font-bold text-lg animate-pulse">รอหัวหน้าห้องเริ่มเกม...</div>)}
+              <button onClick={() => socket.emit("start_deck_game", { roomId })} disabled={gameState.players.length < 2} className="mt-8 px-8 py-4 w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:scale-105 disabled:opacity-50 text-white font-black text-xl rounded-2xl transition-all shadow-lg">เริ่มสับไพ่!</button>
+            ) : (<div className="mt-8 text-cyan-500/70 font-bold animate-pulse">รอหัวหน้าห้องเริ่มเกม...</div>)}
           </div>
         </main>
       )}
 
       {/* --- โหมดเล่นเกม (สนามรบ) --- */}
       {gameState.status === "playing" && (
-        <div className="flex-1 flex flex-col justify-between max-w-7xl w-full mx-auto p-2 z-10 overflow-hidden mt-4">
+        <div className="flex-1 flex flex-col max-w-7xl w-full mx-auto p-2 z-10 overflow-hidden">
           
-          {/* ศัตรู */}
-          <div className="flex gap-2 mb-2 overflow-x-auto">
-            {opponents.map(op => (
-              <div key={op.id} className="flex-1 min-w-[200px] bg-red-950/30 border-2 border-red-900/50 rounded-2xl p-4 flex justify-between items-center">
-                <div>
-                  <p className="text-red-400 font-bold text-xl">{op.name}</p>
-                  <p className="text-xs text-gray-400">ไพ่ในกอง: {op.deckCount} | กองทิ้ง: {op.discardCount}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-black text-green-400">{op.hp} 💖</p>
+          <div className="flex flex-col md:flex-row gap-4 h-full">
+            
+            {/* ซ้าย: บอร์ดเกม */}
+            <div className="flex-1 flex flex-col justify-between overflow-hidden">
+              
+              {/* ศัตรู */}
+              <div className="flex gap-2 overflow-x-auto">
+                {opponents.map(op => (
+                  <div key={op.id} className={`flex-1 min-w-[200px] bg-red-950/30 border-2 ${gameState.currentTurnPlayerId === op.id ? 'border-red-400 shadow-[0_0_15px_red]' : 'border-red-900/50'} rounded-2xl p-3 flex justify-between items-center`}>
+                    <div>
+                      <p className="text-red-400 font-bold">{op.name}</p>
+                      <p className="text-[10px] text-gray-400">เด็ค: {op.deckCount} | ทิ้ง: {op.discardCount}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-black text-green-400">{op.hp}💖</p>
+                      <div className="flex gap-2 text-[10px] font-bold mt-1 justify-end"><span className="text-red-400">{op.combat}⚔️</span><span className="text-yellow-400">{op.gold}💰</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ตลาดกลาง */}
+              <div className="my-2 p-3 bg-black/60 border border-cyan-900/50 rounded-2xl">
+                <div className="flex justify-center gap-2 overflow-x-auto pb-2">
+                  {gameState.market.map((card, idx) => {
+                    const canAfford = isMyTurn && (me?.gold || 0) >= card.cost;
+                    return (
+                      <div key={idx} onClick={() => canAfford && socket.emit("buy_deck_card", { roomId, cardId: card.id })} className={`w-24 h-36 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-1.5 relative ${canAfford ? "hover:-translate-y-2 cursor-pointer shadow-[0_0_15px_rgba(250,204,21,0.5)]" : "opacity-60 grayscale-[40%]"}`}>
+                        <span className="bg-black/70 text-yellow-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full absolute top-1 right-1">💰{card.cost}</span>
+                        <div className="text-3xl mt-3">{card.emoji}</div>
+                        <div className="text-center w-full leading-tight">
+                          <p className="text-[9px] font-black uppercase truncate">{card.name}</p>
+                          <div className="bg-black/60 mt-0.5 py-0.5 rounded text-[8px] text-white font-bold">{getEffectText(card.effect)}</div>
+                          {card.ally && Object.keys(card.ally).length > 0 && <div className="text-[7px] text-gray-300 mt-0.5">🤝{getEffectText(card.ally)}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
-          </div>
 
-          {/* ตลาดกลาง */}
-          <div className="my-2 p-4 bg-black/60 border border-cyan-900/50 rounded-2xl">
-            <h3 className="text-center text-cyan-400 font-black mb-2 tracking-widest">--- ตลาดไพ่ ---</h3>
-            <div className="flex justify-center gap-3 overflow-x-auto pb-2">
-              {gameState.market.map((card, idx) => (
-                <div key={idx} className={`w-32 h-48 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-2 relative shadow-lg`}>
-                  <span className="bg-black/70 text-yellow-300 text-xs font-bold px-2 py-1 rounded-full absolute top-1 right-1">💰 {card.cost}</span>
-                  <div className="text-4xl mt-4">{card.emoji}</div>
-                  <div className="text-center w-full">
-                    <p className="text-[11px] font-black uppercase truncate">{card.name}</p>
-                    <div className="bg-black/60 mt-1 py-1 rounded text-[10px] text-white font-bold">{getEffectText(card.effect)}</div>
-                    {card.ally && Object.keys(card.ally).length > 0 && <div className="text-[9px] text-gray-300 mt-1">🤝 {getEffectText(card.ally)}</div>}
-                  </div>
+              {/* พื้นที่ของเรา */}
+              <div className="flex flex-col gap-2 mt-auto">
+                
+                {/* Play Area (ไพ่ที่ลงไปแล้ว) */}
+                <div className="h-20 bg-blue-900/20 border border-blue-500/30 rounded-xl flex items-center gap-2 p-2 overflow-x-auto">
+                  {me?.playArea && me.playArea.length === 0 && <p className="text-slate-500 text-xs font-bold w-full text-center">ยังไม่ได้เล่นไพ่ในเทิร์นนี้...</p>}
+                  {me?.playArea?.map((card, idx) => (
+                    <div key={idx} title={card.name} className={`w-12 h-16 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border rounded-md flex items-center justify-center text-xl`}>{card.emoji}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* สเตตัสของเรา และไพ่บนมือ */}
-          <div className="flex flex-col gap-2 mt-auto">
-            <div className="flex gap-4 mb-2">
-              <div className="bg-green-900/80 border-2 border-green-500 p-3 rounded-2xl text-center min-w-[90px]"><p className="text-green-300 text-xs font-bold">HP</p><p className="text-3xl font-black text-white">{me?.hp}</p></div>
-              <div className="bg-yellow-900/80 border-2 border-yellow-500 p-3 rounded-2xl text-center min-w-[90px]"><p className="text-yellow-300 text-xs font-bold">Gold</p><p className="text-3xl font-black text-white">{me?.gold}</p></div>
-              <div className="bg-red-900/80 border-2 border-red-500 p-3 rounded-2xl text-center min-w-[90px]"><p className="text-red-300 text-xs font-bold">Combat</p><p className="text-3xl font-black text-white">{me?.combat}</p></div>
-              <div className="bg-slate-800/80 border-2 border-slate-500 p-3 rounded-2xl flex-1 flex items-center justify-center"><p className="text-slate-400 font-bold">รอระบบเล่นไพ่ในสเต็ปถัดไป...</p></div>
-            </div>
-            
-            <div className="bg-slate-900/70 border-t-2 border-slate-600 rounded-t-2xl p-4 flex justify-center gap-3 overflow-x-auto min-h-[200px]">
-              {gameState.myHand?.map((card, idx) => (
-                <div key={card.id} className={`w-32 h-48 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-2 hover:-translate-y-4 transition-transform cursor-pointer shadow-lg`}>
-                  <div className="text-4xl mt-4">{card.emoji}</div>
-                  <div className="text-center w-full">
-                    <p className="text-[11px] font-black uppercase truncate">{card.name}</p>
-                    <div className="bg-black/60 mt-1 py-1 rounded text-[10px] text-white font-bold">{getEffectText(card.effect)}</div>
+                {/* สเตตัสและปุ่มจบเทิร์น */}
+                <div className="flex justify-between items-end gap-2">
+                  <div className="flex gap-2">
+                    <div className="bg-green-900/80 border-2 border-green-500 p-2 rounded-xl text-center min-w-[60px]"><p className="text-green-300 text-[9px] font-bold">HP</p><p className="text-xl font-black text-white">{me?.hp}</p></div>
+                    <div className="bg-yellow-900/80 border-2 border-yellow-500 p-2 rounded-xl text-center min-w-[60px]"><p className="text-yellow-300 text-[9px] font-bold">Gold</p><p className="text-xl font-black text-white">{me?.gold}</p></div>
+                    <div className="bg-red-900/80 border-2 border-red-500 p-2 rounded-xl text-center min-w-[60px]"><p className="text-red-300 text-[9px] font-bold">Combat</p><p className="text-xl font-black text-white">{me?.combat}</p></div>
                   </div>
+                  {isMyTurn ? (
+                    <button onClick={() => socket.emit("end_deck_turn", { roomId })} className="bg-gradient-to-r from-red-600 to-red-800 border-2 border-red-400 px-4 py-2 rounded-xl font-black text-white hover:scale-105 shadow-[0_0_20px_rgba(220,38,38,0.5)] animate-pulse text-sm">⚔️ โจมตี & จบเทิร์น</button>
+                  ) : (
+                    <div className="bg-slate-800 text-slate-500 border-2 border-slate-600 px-4 py-2 rounded-xl font-bold text-sm">รอเทิร์นเพื่อน...</div>
+                  )}
                 </div>
-              ))}
+                
+                {/* ไพ่บนมือ */}
+                <div className="bg-slate-900/70 border-t-2 border-slate-600 rounded-t-2xl p-3 flex justify-center gap-2 overflow-x-auto min-h-[160px]">
+                  {gameState.myHand?.map((card) => (
+                    <div key={card.id} onClick={() => isMyTurn && socket.emit("play_deck_card", { roomId, cardId: card.id })} className={`w-24 h-36 flex-shrink-0 bg-gradient-to-b ${getFactionColors(card.faction)} border-2 rounded-xl flex flex-col items-center justify-between p-1.5 relative ${isMyTurn ? "hover:-translate-y-4 cursor-pointer hover:shadow-[0_0_20px_white] transition-transform z-10" : "opacity-80"}`}>
+                      <div className="text-3xl mt-3">{card.emoji}</div>
+                      <div className="text-center w-full leading-tight">
+                        <p className="text-[9px] font-black uppercase truncate">{card.name}</p>
+                        <div className="bg-black/60 mt-0.5 py-0.5 rounded text-[8px] text-white font-bold">{getEffectText(card.effect)}</div>
+                        {card.ally && Object.keys(card.ally).length > 0 && <div className="text-[7px] text-yellow-300 mt-0.5 font-bold">🤝{getEffectText(card.ally)}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
+
+            {/* ขวา: Log ประวัติการเล่น */}
+            <div className="hidden md:flex w-64 flex-col bg-black/60 border border-slate-700 rounded-2xl p-3 h-full overflow-hidden">
+              <h3 className="text-cyan-400 font-bold text-sm border-b border-slate-700 pb-2 mb-2">📜 บันทึกสงคราม</h3>
+              <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1">
+                {gameState.history?.map((log, idx) => (
+                  <div key={idx} className={`text-[10px] p-1.5 rounded bg-slate-800/50 border-l-2 ${idx===0 ? 'border-cyan-400 text-white' : 'border-slate-500 text-slate-400'}`}>
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
       )}
