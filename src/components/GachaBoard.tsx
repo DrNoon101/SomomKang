@@ -15,8 +15,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showSoundHint, setShowSoundHint] = useState(true);
-  
-  // ✨ เพิ่มตัวจับชีพจรว่าเน็ตเชื่อมต่อกับสมองกลได้หรือยัง
   const [isConnected, setIsConnected] = useState(false); 
   
   const lastCardIdRef = useRef<string | null>(null);
@@ -50,13 +48,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
 
-    // เช็คสถานะการเชื่อมต่อ
-    s.on("connect", () => setIsConnected(true));
-    s.on("disconnect", () => setIsConnected(false));
-
-    const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
-    s.emit("join_gacha_room", { roomId, username, maxPlayers });
-
+    // 🔥 1. "ใส่หูฟัง" เตรียมรับข้อมูลจากเซิร์ฟเวอร์ก่อนเลย
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
       
@@ -83,15 +75,25 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
     });
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
+
+    // 🔥 2. "ตะโกน" ขอเข้าห้องเฉพาะตอนที่เน็ตเชื่อมต่อติดแล้วชัวร์ๆ เท่านั้น!
+    s.on("connect", () => {
+      setIsConnected(true);
+      const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
+      s.emit("join_gacha_room", { roomId, username, maxPlayers });
+    });
+
+    s.on("disconnect", () => setIsConnected(false));
+
     return () => { s.disconnect(); };
   }, [roomId, username, router]); 
 
-  // ✨ อัปเกรดหน้าจอโหลดให้บอกสถานะชัดเจนว่ารออะไรอยู่!
+  // หน้าจอโหลดจับชีพจร
   if (!gameState || !socket) return (
     <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans text-center px-4">
       <div className="text-8xl mb-6 animate-spin">🔮</div>
       <h2 className="text-3xl font-bold animate-pulse text-purple-300 mb-4">
-        {isConnected ? "เชื่อมต่อสำเร็จ! กำลังสับไพ่..." : "กำลังปลุกสมองกลให้ตื่น..."}
+        {isConnected ? "เชื่อมต่อสำเร็จ! กำลังจัดโต๊ะ..." : "กำลังปลุกสมองกลให้ตื่น..."}
       </h2>
       {!isConnected && (
         <div className="max-w-lg bg-black/40 p-6 rounded-2xl border border-purple-500/50 shadow-lg text-left">
@@ -99,7 +101,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
           <ul className="text-sm text-gray-300 space-y-2 list-disc pl-4">
             <li>ตอนนี้หน้าเว็บอัปเดตเสร็จแล้ว แต่ <b>Server (สมองกล)</b> กำลังรีสตาร์ทตัวเองอยู่ครับ</li>
             <li>ปกติจะใช้เวลาประมาณ <b>2 ถึง 4 นาที</b> ในการตื่นขึ้นมา</li>
-            <li>ถ้าเกิน 5 นาทีแล้วยังหมุนติ้วๆ แสดงว่าโค้ดสมองกลที่แก้ไปรอบก่อนอาจจะพิมพ์ตกหล่น (พัง) ให้แคปหน้าจอที่มี Error ส่งมาให้โค้ชดูได้เลยครับ!</li>
           </ul>
         </div>
       )}
