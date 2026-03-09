@@ -17,6 +17,71 @@ app.get("/", (req, res) => res.send("Arcade Server is running."));
 // ==========================================
 const deckRooms = new Map();
 
+// --- กฎของเกม Deck Builder (Rules Engine) ---
+function shuffleDeck(array) {
+  let currentIndex = array.length, randomIndex;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex); currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+}
+
+function createDeckMarket() {
+  let deck = []; let id = 0;
+  const add = (faction, name, emoji, cost, effect, ally) => { 
+    for(let i=0; i<3; i++) deck.push({ id: `db_${id++}`, faction, name, emoji, cost, effect, ally }); 
+  };
+  
+  // 🔴 Somom | 🟡 The Angles | 🔵 The Musician | 💖 Cassanova
+  add('somom', 'หมัดสมม', '🔥', 2, { combat: 3 }, { combat: 2 });
+  add('somom', 'ดาบคลั่ง', '🗡️', 4, { combat: 5 }, { draw: 1 });
+  add('somom', 'ระเบิดพลีชีพ', '💣', 3, { combat: 5, hp: -1 }, { combat: 3 });
+  add('angles', 'แสงเยียวยา', '👼', 2, { hp: 3 }, { combat: 2 });
+  add('angles', 'โล่สวรรค์', '🛡️', 4, { hp: 4, combat: 2 }, { hp: 2 });
+  add('angles', 'พรศักดิ์สิทธิ์', '✨', 5, { hp: 5, draw: 1 }, { combat: 2 });
+  add('musician', 'จังหวะแจ๊ส', '🎷', 2, { gold: 1, draw: 1 }, { combat: 1 });
+  add('musician', 'โซโล่กีตาร์', '🎸', 3, { combat: 2, draw: 1 }, { gold: 1 });
+  add('musician', 'วงออร์เคสตรา', '🎺', 5, { draw: 2 }, { combat: 2 });
+  add('cassanova', 'โปรยเสน่ห์', '🌹', 2, { gold: 2 }, { hp: 2 });
+  add('cassanova', 'เปย์ไม่อั้น', '💸', 4, { gold: 3 }, { combat: 2 });
+  add('cassanova', 'หลงใหล', '💋', 3, { gold: 2, combat: 1 }, { draw: 1 });
+
+  return shuffleDeck(deck);
+}
+
+function getStartingDeck() {
+  const deck = [];
+  for(let i=0; i<8; i++) deck.push({ id: `start_g_${Math.random()}`, faction: 'starter', name: 'เหรียญทอง', emoji: '🪙', cost: 0, effect: { gold: 1 }, ally: {} });
+  for(let i=0; i<2; i++) deck.push({ id: `start_c_${Math.random()}`, faction: 'starter', name: 'มีดสั้น', emoji: '🔪', cost: 0, effect: { combat: 1 }, ally: {} });
+  return deck;
+}
+
+function drawDeckCards(player, count) {
+  for(let i=0; i<count; i++) {
+    if(player.deck.length === 0) {
+      if(player.discard.length === 0) break; 
+      player.deck = shuffleDeck(player.discard); player.discard = [];
+    }
+    player.hand.push(player.deck.pop());
+  }
+}
+
+// อัปเกรดฟังก์ชันส่งข้อมูล (ซ่อนไพ่บนมือจากคนอื่น)
+function broadcastDeckState(roomId) {
+  const room = deckRooms.get(roomId); if (!room) return;
+  const publicState = {
+    roomId: room.id, hostId: room.hostId, status: room.status, maxPlayers: room.maxPlayers, 
+    market: room.market || [], currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null,
+    players: room.players.map(p => ({ 
+      id: p.id, name: p.name, connected: p.connected, hp: p.hp || 50, gold: p.gold || 0, combat: p.combat || 0, 
+      deckCount: p.deck ? p.deck.length : 0, discardCount: p.discard ? p.discard.length : 0, playArea: p.playArea || [] 
+    }))
+  };
+  // ส่ง State และไพ่บนมือ (myHand) แยกให้แต่ละคน
+  room.players.forEach(p => { io.to(p.id).emit("deck_state", { ...publicState, myHand: p.hand || [] }); });
+}
+
 function getOrCreateDeckRoom(roomId) {
   let room = deckRooms.get(roomId);
   if (!room) {
@@ -834,6 +899,28 @@ io.on("connection", (socket) => {
 
     socket.join(`deck_${roomId}`);
     socket.data.deckRoomId = roomId; // แปะป้ายไว้ตอนเน็ตหลุด
+    broadcastDeckState(roomId);
+  });
+
+  socket.on("start_deck_game", ({ roomId }) => {
+    const room = deckRooms.get(roomId); 
+    // เช็คสิทธิ์: ต้องเป็นหัวหน้าห้อง และห้องต้องอยู่ในสถานะรอ
+    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
+    
+    // ตั้งโต๊ะ
+    room.marketDeck = createDeckMarket(); 
+    room.market = room.marketDeck.splice(0, 5); // เปิดตลาด 5 ใบ
+    room.status = "playing"; 
+    room.currentTurnIndex = 0; 
+    
+    // แจกสเตตัสและไพ่เริ่มต้นให้ทุกคน
+    room.players.forEach(p => { 
+      p.hp = 50; p.gold = 0; p.combat = 0; 
+      p.deck = shuffleDeck(getStartingDeck()); 
+      p.hand = []; p.discard = []; p.playArea = []; 
+      drawDeckCards(p, 5); // จั่วไพ่ขึ้นมือ 5 ใบ
+    });
+    
     broadcastDeckState(roomId);
   });
 
