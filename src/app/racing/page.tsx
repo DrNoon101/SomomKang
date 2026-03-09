@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import RacingBoard from "../../components/RacingBoard";
+import RacingBoard from "@/components/RacingBoard";
 
 function RacingContent() {
   const searchParams = useSearchParams();

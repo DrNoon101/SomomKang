@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
 interface Racer { id: number; name: string; emoji: string; progress: number; }
+interface Player { id: string; name: string; connected: boolean; chips: number; betAmount: number; betRacerId: number | null; wonAmount: number; }
 interface RacingState { roomId: string; hostId: string; status: "waiting" | "playing" | "ended"; players: Player[]; racers: Racer[]; winnerRacerId: number | null; totalPool: number; maxPlayers: number; }
 
 export default function RacingBoard({ roomId, username }: { roomId: string; username: string }) {
