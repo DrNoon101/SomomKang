@@ -74,6 +74,9 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
     if(effect.combat) text.push(`+${effect.combat} ⚔️`);
     if(effect.hp) text.push(`${effect.hp > 0 ? '+' : ''}${effect.hp} 💖`);
     if(effect.draw) text.push(`จั่ว ${effect.draw} 🃏`);
+    // 🔥 2 บรรทัดที่เพิ่มเข้ามาใหม่
+    if(effect.steal) text.push(`ขโมยศัตรู ${effect.steal} 💰`);
+    if(effect.discardEnemy) text.push(`ศัตรูทิ้งไพ่ ${effect.discardEnemy} 🗑️`);
     return text.join(" | ");
   };
 

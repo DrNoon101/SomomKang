@@ -31,18 +31,27 @@ function createDeckMarket() {
   const add = (faction, name, emoji, cost, effect, ally) => { 
     for(let i=0; i<3; i++) deck.push({ id: `db_${id++}`, faction, name, emoji, cost, effect, ally }); 
   };
+  
+  // 🔥 Somom (เพิ่มสกิลบังคับศัตรูทิ้งไพ่ - discardEnemy)
   add('somom', 'หมัดสมม', '🔥', 2, { combat: 3 }, { combat: 2 });
   add('somom', 'ดาบคลั่ง', '🗡️', 4, { combat: 5 }, { draw: 1 });
-  add('somom', 'ระเบิดพลีชีพ', '💣', 3, { combat: 5, hp: -1 }, { combat: 3 });
+  add('somom', 'คำรามกรรโชก', '🗣️', 5, { combat: 3, discardEnemy: 1 }, { combat: 3 }); // บังคับทิ้งไพ่ 1 ใบ!
+  
+  // 👼 The Angles (สายฮีลเหมือนเดิม)
   add('angles', 'แสงเยียวยา', '👼', 2, { hp: 3 }, { combat: 2 });
   add('angles', 'โล่สวรรค์', '🛡️', 4, { hp: 4, combat: 2 }, { hp: 2 });
   add('angles', 'พรศักดิ์สิทธิ์', '✨', 5, { hp: 5, draw: 1 }, { combat: 2 });
+  
+  // 🎷 The Musician (จั่วไพ่รัวๆ)
   add('musician', 'จังหวะแจ๊ส', '🎷', 2, { gold: 1, draw: 1 }, { combat: 1 });
   add('musician', 'โซโล่กีตาร์', '🎸', 3, { combat: 2, draw: 1 }, { gold: 1 });
   add('musician', 'วงออร์เคสตรา', '🎺', 5, { draw: 2 }, { combat: 2 });
+  
+  // 🌹 Cassanova (เพิ่มสกิลขโมยเงิน - steal)
   add('cassanova', 'โปรยเสน่ห์', '🌹', 2, { gold: 2 }, { hp: 2 });
   add('cassanova', 'เปย์ไม่อั้น', '💸', 4, { gold: 3 }, { combat: 2 });
-  add('cassanova', 'หลงใหล', '💋', 3, { gold: 2, combat: 1 }, { draw: 1 });
+  add('cassanova', 'จูบมรณะ', '💋', 4, { steal: 2, combat: 1 }, { draw: 1 }); // ขโมยเงิน 2G!
+
   return shuffleDeck(deck);
 }
 
@@ -483,18 +492,53 @@ io.on("connection", (socket) => {
   socket.on("play_deck_card", ({ roomId, cardId }) => {
     const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
     const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
-    const player = room.players[playerIndex]; const cardIndex = player.hand.findIndex(c => c.id === cardId); if (cardIndex === -1) return;
+    const player = room.players[playerIndex]; 
+    const cardIndex = player.hand.findIndex(c => c.id === cardId); if (cardIndex === -1) return;
     const card = player.hand.splice(cardIndex, 1)[0];
     const hasAlly = player.playArea.some(c => c.faction === card.faction && card.faction !== 'starter');
     
-    if(card.effect.gold) player.gold += card.effect.gold; if(card.effect.combat) player.combat += card.effect.combat;
-    if(card.effect.hp) player.hp += card.effect.hp; if(card.effect.draw) drawDeckCards(player, card.effect.draw);
-    
     let log = `${player.name} ลงไพ่ [${card.name}]`;
+
+    // ฟังก์ชันประมวลผลเอฟเฟกต์ (รวมขโมยเงิน และ บังคับทิ้งไพ่)
+    const applyEffects = (eff) => {
+      if(eff.gold) player.gold += eff.gold; 
+      if(eff.combat) player.combat += eff.combat;
+      if(eff.hp) player.hp += eff.hp; 
+      if(eff.draw) drawDeckCards(player, eff.draw);
+      
+      // 😈 ระบบขโมยเงิน (Steal)
+      if(eff.steal && room.players.length > 1) {
+        const targetIndex = (playerIndex + 1) % room.players.length;
+        const target = room.players[targetIndex];
+        const stolenAmount = Math.min(target.gold, eff.steal);
+        target.gold -= stolenAmount;
+        player.gold += stolenAmount;
+        if(stolenAmount > 0) log += ` (ขโมยมา ${stolenAmount}G!)`;
+      }
+
+      // 🗑️ ระบบบังคับศัตรูทิ้งไพ่ (Discard Enemy)
+      if(eff.discardEnemy && room.players.length > 1) {
+        const targetIndex = (playerIndex + 1) % room.players.length;
+        const target = room.players[targetIndex];
+        let droppedCount = 0;
+        for(let i=0; i<eff.discardEnemy; i++) {
+          if(target.hand.length > 0) {
+            const rIdx = Math.floor(Math.random() * target.hand.length); // สุ่มทิ้งจากมือ
+            target.discard.push(target.hand.splice(rIdx, 1)[0]);
+            droppedCount++;
+          }
+        }
+        if(droppedCount > 0) log += ` (ศัตรูถูกบังคับทิ้งไพ่ ${droppedCount} ใบ!)`;
+      }
+    };
+
+    // ใช้สกิลหลัก
+    applyEffects(card.effect);
+    
+    // ใช้สกิลคอมโบ (ถ้ามีพรรคพวกสีเดียวกันบนบอร์ด)
     if(hasAlly && card.ally) {
-      if(card.ally.gold) player.gold += card.ally.gold; if(card.ally.combat) player.combat += card.ally.combat;
-      if(card.ally.hp) player.hp += card.ally.hp; if(card.ally.draw) drawDeckCards(player, card.ally.draw);
-      log += ` 🔥 (คอมโบ ${card.faction.toUpperCase()} ทำงาน!)`;
+      log += ` 🔥 คอมโบ ${card.faction.toUpperCase()} ทำงาน!`;
+      applyEffects(card.ally);
     }
     
     player.playArea.push(card);
