@@ -173,10 +173,12 @@ export default function GameHub() {
                   <div>
                     <label className="block text-white/70 text-sm font-bold mb-2">นักลงทุนสูงสุด</label>
                     <select value={racingMaxPlayers} onChange={(e) => setRacingMaxPlayers(Number(e.target.value))} className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white outline-none">
-                      <option value={4}>4 คน</option>
-                      <option value={8}>8 คน</option>
-                      <option value={12}>12 คน</option>
-                    </select>
+  <option value={2}>2 คน</option>
+  <option value={3}>3 คน</option>
+  <option value={4}>4 คน</option>
+  <option value={8}>8 คน</option>
+  <option value={12}>12 คน</option>
+</select>
                   </div>
                 )}
                 <button type="button" onClick={executeRacing} className="w-full py-4 rounded-xl text-white font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 bg-gradient-to-r from-orange-500 to-red-600">
