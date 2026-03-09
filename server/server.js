@@ -128,7 +128,7 @@ io.on("connection", (socket) => {
     if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
     let existingPlayer = room.players.find(p => p.name === safeName);
     if (existingPlayer) { if (room.hostId === existingPlayer.id) room.hostId = socket.id; existingPlayer.id = socket.id; existingPlayer.connected = true; } 
-    else { if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว"); if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); room.players.push({ id: socket.id, name: safeName, hand: [], connected: true, chips: 1000, roundChipsChange: 0 }); }
+    else { if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว"); if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); room.players.push({ id: socket.id, name: safeName, hand: [], connected: true, chips: 2500,hipsChange: 0 }); }
     socket.join(roomId); socket.data.roomId = roomId; broadcastState(roomId);
   });
   socket.on("start_game", ({ roomId }) => { const room = rooms.get(roomId); if (room?.status === "waiting" && room.hostId === socket.id) startGame(roomId); });
@@ -191,7 +191,7 @@ io.on("connection", (socket) => {
     else {
       if (room.status !== "waiting") return socket.emit("racing_error", { message: "ม้าออกตัวไปแล้ว รอตาหน้านะ!" });
       if (room.players.length >= room.maxPlayers) return socket.emit("racing_error", { message: "สนามแข่งเต็มแล้ว!" });
-      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 1000, betAmount: 0, betRacerId: null, wonAmount: 0 });
+      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500,Amount: 0, betRacerId: null, wonAmount: 0 });
     }
     socket.join(`racing_${roomId}`); socket.data.racingRoomId = roomId; broadcastRacingState(roomId);
   });
