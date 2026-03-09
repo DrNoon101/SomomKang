@@ -14,23 +14,34 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
-  const lastCardIdRef = useRef<string | null>(null); // เอาไว้จำว่าการ์ดใบไหนเล่นเสียงไปแล้ว
+  const lastCardIdRef = useRef<string | null>(null);
+  
+  // ✨ เพิ่ม State เช็คว่าผู้เล่นคลิกจอหรือยัง (เพื่อปลดล็อกเสียง)
+  const [hasInteracted, setHasInteracted] = useState(false);
 
-  // 🔊 ฟังก์ชันเล่นเสียง (ใส่ไว้ให้ครบทุกอารมณ์!)
+  // 🔊 อ้างอิงลำโพงที่ฝังไว้ด้านล่าง
+  const audioDraw = useRef<HTMLAudioElement>(null);
+  const audioEvil = useRef<HTMLAudioElement>(null);
+  const audioJackpot = useRef<HTMLAudioElement>(null);
+  const audioExplode = useRef<HTMLAudioElement>(null);
+  const audioFail = useRef<HTMLAudioElement>(null);
+  const audioCash = useRef<HTMLAudioElement>(null);
+  const audioAlert = useRef<HTMLAudioElement>(null);
+
+  // ฟังก์ชันเล่นเสียงที่ดึงจากลำโพงที่โหลดมารอไว้แล้ว
   const playSound = (type: string) => {
-    const sounds: Record<string, string> = {
-      draw: "https://www.soundjay.com/buttons/sounds/button-20.mp3",
-      evil: "https://www.soundjay.com/human/sounds/laughter-01.mp3",
-      jackpot: "https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3",
-      explode: "https://www.soundjay.com/mechanical/sounds/explosion-01.mp3",
-      fail: "https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3",
-      cash: "https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3",
-      alert: "https://www.soundjay.com/buttons/sounds/button-10.mp3"
+    if (!hasInteracted) return; // ถ้ายังไม่เคยคลิกจอเลย จะไม่เล่นเสียงกัน Error
+    
+    const audios: Record<string, HTMLAudioElement | null> = {
+      draw: audioDraw.current, evil: audioEvil.current, jackpot: audioJackpot.current,
+      explode: audioExplode.current, fail: audioFail.current, cash: audioCash.current, alert: audioAlert.current
     };
-    if (typeof window !== "undefined" && sounds[type]) {
-      const audio = new Audio(sounds[type]);
-      audio.volume = 0.5; // ปรับเสียงไม่ให้ดังจนหูแตก
-      audio.play().catch(e => console.log("Autoplay prevented:", e));
+    
+    const audio = audios[type];
+    if (audio) {
+      audio.currentTime = 0;
+      audio.volume = 0.5;
+      audio.play().catch(e => console.log("Browser บล็อกเสียง:", e));
     }
   };
 
@@ -43,7 +54,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
       
-      // ถ้ารอให้เราล็อกเป้า ให้เล่นเสียงเตือน
       if (state.status === "waiting_target" && state.currentTurnPlayerId === s.id) {
         setShowTargetModal(true);
         playSound("alert");
@@ -51,7 +61,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
         setShowTargetModal(false);
       }
 
-      // เช็คการ์ดใบใหม่ที่เพิ่งเปิด เพื่อเล่นเสียงเอฟเฟกต์เฉพาะตัว
       if (state.lastCard && state.lastCard.id !== lastCardIdRef.current) {
         lastCardIdRef.current = state.lastCard.id;
         const type = state.lastCard.type;
@@ -62,14 +71,14 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
         else if (['communist', 'thanos', 'master_thief', 'leech', 'robbery', 'scapegoat', 'wallet_swap', 'robin_hood'].includes(type || "")) playSound("evil");
         else if (type === 'normal') {
           if (state.lastCard.val && state.lastCard.val > 0) playSound("cash");
-          else playSound("fail"); // ว่าว 0 ชิป โดนเสียงแป่ว
+          else playSound("fail");
         }
       }
     });
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
     return () => { s.disconnect(); };
-  }, [roomId, username, router]);
+  }, [roomId, username, router, hasInteracted]); // นำ hasInteracted เข้ามาเพื่อให้มันรู้ว่าปลดล็อกแล้ว
 
   if (!gameState || !socket) return null;
 
@@ -79,22 +88,34 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const sortedPlayers = [...gameState.players].sort((a, b) => b.chips - a.chips);
 
   const handleDraw = () => { 
-    playSound("draw"); // เสียงสวบตอนจั่ว
+    setHasInteracted(true); // ปลดล็อกเสียงแน่นอนตอนกดจั่ว
+    playSound("draw"); 
     socket.emit("draw_gacha", { roomId }); 
   };
   
   const selectTarget = (targetId: string) => { 
-    if (targetId === "random") playSound("evil"); // สุ่มปุ๊บหัวเราะแบบชั่วร้าย
+    if (targetId === "random") playSound("evil"); 
     socket.emit("resolve_gacha_target", { roomId, targetId }); 
     setShowTargetModal(false); 
   };
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
+    // ✨ เมื่อคลิกที่ไหนก็ได้ในหน้าจอ จะปลดล็อกระบบเสียงทันที
+    <div onClick={() => setHasInteracted(true)} className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
+      
+      {/* 🔊 ฝังลำโพงซ่อนไว้ (Preload) */}
+      <audio ref={audioDraw} src="https://www.soundjay.com/buttons/sounds/button-20.mp3" preload="auto" />
+      <audio ref={audioEvil} src="https://www.soundjay.com/human/sounds/laughter-01.mp3" preload="auto" />
+      <audio ref={audioJackpot} src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" preload="auto" />
+      <audio ref={audioExplode} src="https://www.soundjay.com/mechanical/sounds/explosion-01.mp3" preload="auto" />
+      <audio ref={audioFail} src="https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3" preload="auto" />
+      <audio ref={audioCash} src="https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3" preload="auto" />
+      <audio ref={audioAlert} src="https://www.soundjay.com/buttons/sounds/button-10.mp3" preload="auto" />
+
       <header className="bg-black/60 p-4 flex justify-between items-center z-20 border-b border-purple-500/30">
         <div>
           <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500">🎰 กาชาปองนรก</h1>
-          <p className="text-purple-300 text-sm">ROOM: {roomId}</p>
+          <p className="text-purple-300 text-sm">ROOM: {roomId} {!hasInteracted && <span className="text-yellow-500 ml-2 animate-pulse">(คลิกจอ 1 ทีเพื่อเปิดเสียง)</span>}</p>
         </div>
         <div className="bg-black/50 px-5 py-2 rounded-xl border border-gold/50 flex items-center gap-2">
           <span className="text-xl">💰</span><span className="text-xl font-black text-gold">{me?.chips || 0}</span>
@@ -122,7 +143,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
                 <div className="text-8xl mb-6 animate-bounce">🔮</div>
                 <h2 className="text-2xl font-black mb-6 text-purple-300">รอคนใจกล้า ({gameState.players.length}/{gameState.maxPlayers})</h2>
                 {isHost ? (
-                  <button onClick={() => socket.emit("start_gacha", { roomId })} disabled={gameState.players.length < 2} className="w-full px-8 py-4 bg-gradient-to-r from-purple-500 to-fuchsia-600 hover:scale-105 disabled:opacity-50 text-white font-black text-2xl rounded-2xl shadow-[0_10px_30px_rgba(192,38,211,0.5)] transition-all">เริ่มสับไพ่!</button>
+                  <button onClick={() => { setHasInteracted(true); socket.emit("start_gacha", { roomId }); }} disabled={gameState.players.length < 2} className="w-full px-8 py-4 bg-gradient-to-r from-purple-500 to-fuchsia-600 hover:scale-105 disabled:opacity-50 text-white font-black text-2xl rounded-2xl shadow-[0_10px_30px_rgba(192,38,211,0.5)] transition-all">เริ่มสับไพ่!</button>
                 ) : (<div className="text-gray-400 animate-pulse font-bold text-xl">รอเจ้ามือเปิดโต๊ะ...</div>)}
               </div>
             )}
@@ -140,7 +161,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
                   )}
                 </AnimatePresence>
                 
-                {/* 🔧 ปุ่มกดจั่วไพ่ (ไม่ทับกับตัวการ์ดแล้ว!) */}
                 <div className="text-center z-10 flex flex-col items-center mt-4">
                   <div className="text-purple-300 font-bold mb-4">ไพ่เหลือ: <span className="text-3xl text-white">{gameState.deckCount}</span> ใบ</div>
                   {isMyTurn ? (
