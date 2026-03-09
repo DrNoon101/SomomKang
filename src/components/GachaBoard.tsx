@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
 interface Player { id: string; name: string; connected: boolean; chips: number; }
-interface CardData { id: string; name: string; emoji: string; desc: string; player: string; log: string; }
+interface CardData { id: string; name: string; emoji: string; desc: string; player: string; log: string; type?: string; val?: number; }
 interface GachaState { roomId: string; hostId: string; status: "waiting" | "playing" | "ended" | "waiting_target"; players: Player[]; currentTurnPlayerId: string | null; deckCount: number; lastCard: CardData | null; history: string[]; maxPlayers: number; pendingCard: CardData | null; }
 
 export default function GachaBoard({ roomId, username }: { roomId: string; username: string }) {
@@ -14,6 +14,25 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
+  const lastCardIdRef = useRef<string | null>(null); // เอาไว้จำว่าการ์ดใบไหนเล่นเสียงไปแล้ว
+
+  // 🔊 ฟังก์ชันเล่นเสียง (ใส่ไว้ให้ครบทุกอารมณ์!)
+  const playSound = (type: string) => {
+    const sounds: Record<string, string> = {
+      draw: "https://www.soundjay.com/buttons/sounds/button-20.mp3",
+      evil: "https://www.soundjay.com/human/sounds/laughter-01.mp3",
+      jackpot: "https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3",
+      explode: "https://www.soundjay.com/mechanical/sounds/explosion-01.mp3",
+      fail: "https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3",
+      cash: "https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3",
+      alert: "https://www.soundjay.com/buttons/sounds/button-10.mp3"
+    };
+    if (typeof window !== "undefined" && sounds[type]) {
+      const audio = new Audio(sounds[type]);
+      audio.volume = 0.5; // ปรับเสียงไม่ให้ดังจนหูแตก
+      audio.play().catch(e => console.log("Autoplay prevented:", e));
+    }
+  };
 
   useEffect(() => {
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
@@ -23,10 +42,28 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
+      
+      // ถ้ารอให้เราล็อกเป้า ให้เล่นเสียงเตือน
       if (state.status === "waiting_target" && state.currentTurnPlayerId === s.id) {
         setShowTargetModal(true);
+        playSound("alert");
       } else {
         setShowTargetModal(false);
+      }
+
+      // เช็คการ์ดใบใหม่ที่เพิ่งเปิด เพื่อเล่นเสียงเอฟเฟกต์เฉพาะตัว
+      if (state.lastCard && state.lastCard.id !== lastCardIdRef.current) {
+        lastCardIdRef.current = state.lastCard.id;
+        const type = state.lastCard.type;
+        
+        if (type === 'jackpot' || type === 'lucky_draw') playSound("jackpot");
+        else if (type === 'bankruptcy' || type === 'assassin') playSound("explode");
+        else if (type === 'trip_grass' || type === 'fallen_angel' || type === 'tax') playSound("fail");
+        else if (['communist', 'thanos', 'master_thief', 'leech', 'robbery', 'scapegoat', 'wallet_swap', 'robin_hood'].includes(type || "")) playSound("evil");
+        else if (type === 'normal') {
+          if (state.lastCard.val && state.lastCard.val > 0) playSound("cash");
+          else playSound("fail"); // ว่าว 0 ชิป โดนเสียงแป่ว
+        }
       }
     });
 
@@ -41,8 +78,16 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const me = gameState.players.find(p => p.id === socket.id);
   const sortedPlayers = [...gameState.players].sort((a, b) => b.chips - a.chips);
 
-  const handleDraw = () => { socket.emit("draw_gacha", { roomId }); };
-  const selectTarget = (targetId: string) => { socket.emit("resolve_gacha_target", { roomId, targetId }); setShowTargetModal(false); };
+  const handleDraw = () => { 
+    playSound("draw"); // เสียงสวบตอนจั่ว
+    socket.emit("draw_gacha", { roomId }); 
+  };
+  
+  const selectTarget = (targetId: string) => { 
+    if (targetId === "random") playSound("evil"); // สุ่มปุ๊บหัวเราะแบบชั่วร้าย
+    socket.emit("resolve_gacha_target", { roomId, targetId }); 
+    setShowTargetModal(false); 
+  };
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
@@ -95,6 +140,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
                   )}
                 </AnimatePresence>
                 
+                {/* 🔧 ปุ่มกดจั่วไพ่ (ไม่ทับกับตัวการ์ดแล้ว!) */}
                 <div className="text-center z-10 flex flex-col items-center mt-4">
                   <div className="text-purple-300 font-bold mb-4">ไพ่เหลือ: <span className="text-3xl text-white">{gameState.deckCount}</span> ใบ</div>
                   {isMyTurn ? (
@@ -112,7 +158,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
                 <h2 className="text-3xl font-black text-white mb-2">ผู้ชนะคือ...</h2>
                 <div className="text-5xl font-black text-gold mb-6">{sortedPlayers[0]?.name}</div>
                 <p className="text-xl text-green-400 font-bold mb-8">รวยเละเทะ {sortedPlayers[0]?.chips} 💰</p>
-                {isHost && <button onClick={() => socket.emit("reset_gacha", { roomId })} className="w-full px-8 py-4 bg-gradient-to-r from-gold to-yellow-500 hover:scale-105 text-black font-black text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(250,204,21,0.5)]">สับไพ่เล่นตาต่อไป!</button>}
+                {isHost && <button onClick={() => { playSound("draw"); socket.emit("reset_gacha", { roomId }); }} className="w-full px-8 py-4 bg-gradient-to-r from-gold to-yellow-500 hover:scale-105 text-black font-black text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(250,204,21,0.5)]">สับไพ่เล่นตาต่อไป!</button>}
               </div>
             )}
           </div>
