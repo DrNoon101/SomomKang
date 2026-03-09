@@ -25,9 +25,10 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   
   const [gotFlowed, setGotFlowed] = useState(false);
   const [recentFlowPlayerId, setRecentFlowPlayerId] = useState<string | null>(null);
-  
-  // ✨ เพิ่ม State สำหรับจำ "หน้าเหยื่อ" ที่โดนไหล
   const [recentVictimId, setRecentVictimId] = useState<string | null>(null);
+
+  // ✨ State สำหรับเปิด/ปิด ป๊อปอัปคู่มือในเกม
+  const [showGameRules, setShowGameRules] = useState(false);
 
   const [isMuted, setIsMuted] = useState(true);
   const isMutedRef = useRef(isMuted); 
@@ -69,15 +70,10 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
       setTimeout(() => setGotFlowed(false), 3000);
     });
 
-    // ✨ รับรู้ทั้งคนไหลและเหยื่อ
     s.on("player_flowed", ({ playerId, victimId }) => {
       setRecentFlowPlayerId(playerId);
       if (victimId) setRecentVictimId(victimId);
-      
-      setTimeout(() => {
-        setRecentFlowPlayerId(null);
-        setRecentVictimId(null);
-      }, 3000); // ประจาน 3 วินาที
+      setTimeout(() => { setRecentFlowPlayerId(null); setRecentVictimId(null); }, 3000);
     });
 
     return () => { s.disconnect(); };
@@ -88,11 +84,8 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
       if (isMuted || gameState?.status === "ended") bgmRef.current.pause();
       else bgmRef.current.play().catch(() => setIsMuted(true));
     }
-
     if (gameState?.status) {
-      if (gameState.status === "ended" && prevStatusRef.current !== "ended") {
-        playSound(SFX_GAME_END); 
-      }
+      if (gameState.status === "ended" && prevStatusRef.current !== "ended") playSound(SFX_GAME_END); 
       prevStatusRef.current = gameState.status;
     }
   }, [isMuted, gameState?.status]);
@@ -119,10 +112,7 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   };
 
   const handleKang = () => { 
-    if (isMyTurn) {
-      playSound(SFX_KANG);
-      socket.emit("kang", { roomId }); 
-    }
+    if (isMyTurn) { playSound(SFX_KANG); socket.emit("kang", { roomId }); }
   };
 
   const handleFlow = () => {
@@ -151,18 +141,30 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   return (
     <div className="min-h-dvh bg-gradient-to-br from-green-950 via-green-900 to-black text-white font-sans overflow-hidden flex flex-col relative">
       
+      {/* ป๊อปอัป กติกาในเกม */}
+      <AnimatePresence>
+        {showGameRules && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowGameRules(false)}>
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-green-500/50 rounded-3xl p-6 sm:p-8 w-full max-w-xl shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setShowGameRules(false)} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl font-black bg-black/50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+              <h2 className="text-2xl font-black text-gold text-center mb-6 border-b border-white/20 pb-4">📖 คู่มือเซียนไพ่</h2>
+              <ul className="list-disc pl-5 text-gray-300 space-y-3 font-medium text-sm sm:text-base">
+                <li>เมื่อถึงตา ต้อง <strong className="text-blue-400">จั่ว 1 ใบ และ ทิ้งไพ่ 1 ใบ</strong> (ทิ้งไพ่เลขซ้ำกันพร้อมกันได้)</li>
+                <li>ถ้าคนก่อนหน้าทิ้งไพ่เลขเดียวกับที่เรามีในมือ เราสามารถกด <strong className="text-purple-400">"ไหลไพ่"</strong> ทิ้งตามได้ คนโดนไหลจะโดนปรับชิป!</li>
+                <li>ถ้าคิดว่าแต้มในมือน้อยที่สุดแล้ว ให้กด <strong className="text-red-400">"แคง!"</strong> เพื่อจบเกม</li>
+                <li>ถ้าแคงแล้วแต้มน้อยสุดจริง = <strong className="text-yellow-400">รับทรัพย์รอบวง!</strong></li>
+                <li>แต่ถ้าแคงแล้วมีคนอื่นแต้มน้อยกว่า = <strong className="text-red-500">แคงล่ม (โดนปรับชิปบาน!)</strong></li>
+                <li><strong className="text-pink-400">🔥 น็อคมืด (ชนะทันที):</strong> สเตรทฟลัช, หอน(ไพ่เหมือนกัน 4 ใบ), ฟูลเฮาส์, สี(ดอกเดียวกัน 5 ใบ), เรียง, ตอง, 50 แต้ม</li>
+              </ul>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {gotFlowed && (
-          <motion.div 
-            initial={{ scale: 0, opacity: 0 }} 
-            animate={{ scale: [0, 1.5, 1], rotate: [-10, 10, -5, 0], opacity: 1 }} 
-            exit={{ scale: 0, opacity: 0 }} 
-            transition={{ duration: 0.5, type: "spring" }}
-            className="absolute inset-0 z-[100] flex items-center justify-center pointer-events-none"
-          >
-            <h1 className="text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_50px_red] uppercase rotate-[-5deg] bg-red-600/90 px-10 py-6 rounded-3xl border-8 border-white shadow-[0_20px_50px_rgba(220,38,38,0.8)]">
-              💥 โดนไปดิ! 💥
-            </h1>
+          <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [0, 1.5, 1], rotate: [-10, 10, -5, 0], opacity: 1 }} exit={{ scale: 0, opacity: 0 }} transition={{ duration: 0.5, type: "spring" }} className="absolute inset-0 z-[100] flex items-center justify-center pointer-events-none">
+            <h1 className="text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_50px_red] uppercase rotate-[-5deg] bg-red-600/90 px-10 py-6 rounded-3xl border-8 border-white shadow-[0_20px_50px_rgba(220,38,38,0.8)]">💥 โดนไปดิ! 💥</h1>
           </motion.div>
         )}
       </AnimatePresence>
@@ -179,18 +181,20 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
 
       <header className="bg-black/60 backdrop-blur-md p-4 flex justify-between items-center z-20 border-b border-gold/30 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-yellow-300 to-amber-500 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">
-            SomomKang VIP
-          </h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-yellow-300 to-amber-500 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">SomomKang VIP</h1>
           <p className="text-green-400 font-bold text-sm tracking-widest mt-1">ROOM: {roomId}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <button onClick={() => setIsMuted(!isMuted)} className={`text-2xl p-2 rounded-full transition-all ${isMuted ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400 drop-shadow-[0_0_10px_#4ade80]"}`}>
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* ✨ ปุ่มเปิดกติกาในเกม */}
+          <button onClick={() => setShowGameRules(true)} className="text-xl p-2 bg-blue-500/20 text-blue-400 rounded-full hover:bg-blue-500/40 transition-all border border-blue-500/50" title="กติกาการเล่น">
+            ❓
+          </button>
+          <button onClick={() => setIsMuted(!isMuted)} className={`text-xl p-2 rounded-full transition-all border ${isMuted ? "bg-red-500/20 text-red-400 border-red-500/50" : "bg-green-500/20 text-green-400 border-green-500/50 drop-shadow-[0_0_10px_#4ade80]"}`} title="เปิด/ปิดเสียง">
             {isMuted ? "🔇" : "🔊"}
           </button>
-          <div className="bg-gradient-to-r from-yellow-900/50 to-black px-5 py-2 rounded-xl border border-gold/50 shadow-[0_0_15px_rgba(250,204,21,0.2)] flex items-center gap-2">
-            <span className="text-2xl animate-pulse">💰</span>
-            <span className="text-xl sm:text-2xl font-black text-gold drop-shadow-md">{me?.chips || 0}</span>
+          <div className="bg-gradient-to-r from-yellow-900/50 to-black px-4 py-2 rounded-xl border border-gold/50 shadow-[0_0_15px_rgba(250,204,21,0.2)] flex items-center gap-2 ml-2">
+            <span className="text-xl animate-pulse">💰</span>
+            <span className="text-lg sm:text-2xl font-black text-gold drop-shadow-md">{me?.chips || 0}</span>
           </div>
         </div>
       </header>
@@ -200,26 +204,17 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-black/70 border-2 border-gold/50 rounded-3xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(250,204,21,0.15)] backdrop-blur-xl">
             <div className="text-6xl mb-4 animate-bounce">🎰</div>
             <h2 className="text-3xl font-black text-white mb-6">โต๊ะวีไอพีรอเซียนไพ่</h2>
-            
             <div className="bg-black/50 rounded-2xl p-4 mb-6 text-left border border-white/10">
-              <h3 className="text-gold font-bold mb-3 flex justify-between">
-                <span>ลูกวง</span>
-                <span>{gameState.players.length} / {gameState.maxPlayers}</span>
-              </h3>
+              <h3 className="text-gold font-bold mb-3 flex justify-between"><span>ลูกวง</span><span>{gameState.players.length} / {gameState.maxPlayers}</span></h3>
               <ul className="space-y-3">
                 {gameState.players.map((p) => (
                   <li key={p.id} className="flex justify-between items-center bg-green-900/30 p-3 rounded-xl border border-green-500/30">
-                    <span className="font-bold text-lg text-white flex items-center gap-2">
-                      {p.name} {p.id === gameState.hostId && <span className="text-xl" title="เจ้ามือ">👑</span>}
-                    </span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.connected ? "bg-green-500/20 text-green-400 border border-green-400/50" : "bg-red-500/20 text-red-400"}`}>
-                      {p.connected ? "นั่งโต๊ะแล้ว" : "เน็ตหลุด"}
-                    </span>
+                    <span className="font-bold text-lg text-white flex items-center gap-2">{p.name} {p.id === gameState.hostId && <span className="text-xl" title="เจ้ามือ">👑</span>}</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${p.connected ? "bg-green-500/20 text-green-400 border border-green-400/50" : "bg-red-500/20 text-red-400"}`}>{p.connected ? "นั่งโต๊ะแล้ว" : "เน็ตหลุด"}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            
             {isHost ? (
               <button onClick={() => socket.emit("start_game", { roomId })} disabled={gameState.players.length < 2} className="w-full py-4 bg-gradient-to-r from-gold via-yellow-400 to-amber-500 hover:scale-105 text-black font-black text-2xl rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.5)] disabled:opacity-50 disabled:cursor-not-allowed transition-all uppercase tracking-wider">
                 เริ่มแจกไพ่!
@@ -233,12 +228,9 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
 
       {gameState.status === "playing" && (
         <div className="flex-1 flex flex-col justify-between p-4 z-10 relative">
-          
           <div className="flex justify-center gap-4 sm:gap-8 mt-4 relative">
             {opponents.map((p) => (
               <div key={p.id} className={`flex flex-col items-center transition-all duration-300 ${gameState.currentTurnPlayerId === p.id ? "scale-110 drop-shadow-[0_0_20px_gold]" : "opacity-80"} relative`}>
-                
-                {/* 🌊 ป้ายประจานคนไหล */}
                 <AnimatePresence>
                   {recentFlowPlayerId === p.id && (
                     <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: -20, opacity: 1 }} exit={{ opacity: 0 }} className="absolute -top-10 z-50 bg-purple-600 text-white px-4 py-1 rounded-full font-black text-sm border-2 border-white shadow-[0_0_15px_purple] animate-bounce whitespace-nowrap">
@@ -246,14 +238,10 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                     </motion.div>
                   )}
                 </AnimatePresence>
-
                 <div className={`px-3 py-1 rounded-full text-xs sm:text-sm font-bold mb-2 border ${gameState.currentTurnPlayerId === p.id ? "bg-gold text-black border-yellow-300 shadow-[0_0_15px_gold]" : "bg-black/60 text-white border-white/20"} flex items-center gap-2`}>
                   {p.name} <span className={gameState.currentTurnPlayerId === p.id ? "text-black" : "text-gold"}>💰{p.chips}</span>
                 </div>
-                
                 <div className="w-12 h-16 sm:w-16 sm:h-24 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold/50 shadow-xl flex items-center justify-center relative">
-                  
-                  {/* 😿 มีมประจานเหยื่อโดนไหล! (แปะทับหน้าเพื่อนคู่แข่ง) */}
                   <AnimatePresence>
                     {recentVictimId === p.id && (
                       <motion.img 
@@ -265,11 +253,8 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                       />
                     )}
                   </AnimatePresence>
-
                   <div className="w-8 h-12 sm:w-10 sm:h-16 border border-gold/30 rounded-lg"></div>
-                  <div className="absolute -bottom-2 -right-2 bg-black text-white w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-black border-2 border-gold shadow-lg">
-                    {p.handCount}
-                  </div>
+                  <div className="absolute -bottom-2 -right-2 bg-black text-white w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-black border-2 border-gold shadow-lg">{p.handCount}</div>
                 </div>
               </div>
             ))}
@@ -279,17 +264,12 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center cursor-pointer">
               <div className="w-16 h-24 sm:w-20 sm:h-32 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold shadow-[0_0_20px_rgba(0,0,0,0.8)] flex items-center justify-center relative">
                 <div className="w-12 h-20 sm:w-14 sm:h-24 border border-gold/30 rounded-lg flex items-center justify-center text-gold opacity-50 text-2xl sm:text-3xl">🂠</div>
-                <div className="absolute -top-3 -right-3 bg-gold text-black px-2 py-1 rounded-full text-xs font-black border-2 border-black shadow-lg">
-                  {gameState.drawPileCount}
-                </div>
+                <div className="absolute -top-3 -right-3 bg-gold text-black px-2 py-1 rounded-full text-xs font-black border-2 border-black shadow-lg">{gameState.drawPileCount}</div>
               </div>
               <span className="mt-3 px-3 py-1 bg-black/50 rounded-full text-xs font-bold text-gold border border-gold/30">กองจั่ว</span>
             </motion.div>
-
             <div className="flex flex-col items-center">
-              {gameState.discardTop ? (
-                renderCard(gameState.discardTop, false)
-              ) : (
+              {gameState.discardTop ? renderCard(gameState.discardTop, false) : (
                 <div className="w-16 h-24 sm:w-20 sm:h-32 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center bg-black/40 backdrop-blur-sm">
                   <span className="text-white/30 font-bold text-xs">ว่างเปล่า</span>
                 </div>
@@ -299,7 +279,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
           </div>
 
           <div className="flex flex-col items-center gap-4 sm:gap-6 mb-2 relative z-20">
-            
             <AnimatePresence>
               {recentFlowPlayerId === socket.id && (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ opacity: 0 }} className="absolute -top-24 sm:-top-32 z-50 bg-purple-600 text-white px-6 py-2 rounded-full font-black text-lg border-2 border-white shadow-[0_0_30px_purple] animate-bounce">
@@ -307,8 +286,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* 😿 ถ้าเราโดนไหลเอง เอารูปมาแปะตรงกลางจอด้วยเลย! */}
             <AnimatePresence>
               {recentVictimId === socket.id && (
                 <motion.img 
@@ -320,13 +297,10 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                 />
               )}
             </AnimatePresence>
-
             <AnimatePresence>
               {isMyTurn && !recentFlowPlayerId && (
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute -top-16 sm:-top-20 text-center z-30">
-                  <span className="bg-gradient-to-r from-gold to-yellow-500 text-black px-6 py-2 rounded-full font-black text-sm sm:text-lg shadow-[0_0_20px_gold] animate-pulse border-2 border-white inline-block">
-                    🔥 ตาของคุณแล้ว! จัดไป! 🔥
-                  </span>
+                  <span className="bg-gradient-to-r from-gold to-yellow-500 text-black px-6 py-2 rounded-full font-black text-sm sm:text-lg shadow-[0_0_20px_gold] animate-pulse border-2 border-white inline-block">🔥 ตาของคุณแล้ว! จัดไป! 🔥</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -363,43 +337,43 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
       {gameState.status === "ended" && gameState.endedGameData && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overflow-y-auto">
           <motion.div initial={{ scale: 0.8, opacity: 0, rotateX: 20 }} animate={{ scale: 1, opacity: 1, rotateX: 0 }} className="bg-gradient-to-b from-gray-900 to-black border-4 border-gold rounded-3xl p-6 sm:p-10 max-w-3xl w-full shadow-[0_0_80px_rgba(250,204,21,0.4)] my-auto relative overflow-hidden">
-            
             <div className="absolute -top-20 -left-20 w-64 h-64 bg-gold/20 blur-[100px] rounded-full"></div>
             <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-green-500/20 blur-[100px] rounded-full"></div>
-
             <div className="text-center mb-8 relative z-10">
               <div className="text-7xl mb-4 drop-shadow-[0_0_20px_gold]">🏆</div>
-              <h2 className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-yellow-200 to-yellow-500 drop-shadow-lg uppercase tracking-wider">
-                {gameState.endedGameData.winnerName} ชนะ!
-              </h2>
+              <h2 className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-yellow-200 to-yellow-500 drop-shadow-lg uppercase tracking-wider">{gameState.endedGameData.winnerName} ชนะ!</h2>
               <p className="text-lg sm:text-2xl text-white font-black mt-4 bg-red-600/80 inline-block px-4 py-2 rounded-full border-2 border-red-400 shadow-lg">
                 {gameState.instantWinType ? `🔥 น็อคมืด: ${gameState.instantWinType} 🔥` : (gameState.endedGameData.endGameReason === "kang" ? "ชนะแคงสวยงาม!" : gameState.endedGameData.endGameReason === "empty_hand" ? "ไพ่หมดมือก่อนชนะ!" : "แคงล่ม! โดนปรับบาน")}
               </p>
             </div>
-
             <div className="space-y-4 relative z-10">
-              {gameState.endedGameData.players.map((p: any) => (
-                <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4`}>
-                  <div className="text-center sm:text-left min-w-[120px]">
-                    <span className="font-black text-xl text-white block">{p.name}</span>
-                    <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
+              {gameState.endedGameData.players.map((p: any) => {
+                const isLoserFromKang = p.roundChipsChange < 0 && (gameState.endedGameData.endGameReason === "kang" || gameState.endedGameData.endGameReason === "kang_shipwreck");
+                return (
+                  <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4 relative`}>
+                    {isLoserFromKang && (
+                      <motion.img 
+                        src="/ชื่อรูปของพี่บอมใส่ตรงนี้นะ.jpg" 
+                        alt="โดนแคง"
+                        animate={{ x: [-2, 2, -2, 2, 0], y: [-2, 2, -2, 2, 0], rotate: [-5, 5, -5, 5, 0] }}
+                        transition={{ repeat: Infinity, duration: 0.1 }}
+                        className="absolute -top-3 -left-3 sm:-top-5 sm:-left-5 w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-red-500 shadow-[0_0_15px_red] z-20 object-cover pointer-events-none"
+                      />
+                    )}
+                    <div className="text-center sm:text-left min-w-[120px]">
+                      <span className="font-black text-xl text-white block">{p.name}</span>
+                      <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
+                    </div>
+                    <div className="flex gap-[-10px] sm:gap-[-5px]">
+                      {p.hand.map((c: Card, i: number) => (<div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">{renderCard(c, false)}</div>))}
+                    </div>
+                    <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
+                      {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
+                    </div>
                   </div>
-                  
-                  <div className="flex gap-[-10px] sm:gap-[-5px]">
-                    {p.hand.map((c: Card, i: number) => (
-                      <div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">
-                        {renderCard(c, false)}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
-                    {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-
             {isHost && (
               <button onClick={() => socket.emit("play_again", { roomId })} className="w-full mt-10 py-4 sm:py-5 bg-gradient-to-r from-gold via-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-gold text-black font-black text-xl sm:text-2xl rounded-2xl shadow-[0_8px_0_#a16207] hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(250,204,21,0.6)] transition-all uppercase tracking-widest border border-yellow-200 z-10 relative">
                 เปิดโต๊ะเล่นตาต่อไป!
@@ -408,7 +382,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
           </motion.div>
         </div>
       )}
-
     </div>
   );
 }

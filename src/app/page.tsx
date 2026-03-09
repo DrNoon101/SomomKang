@@ -10,6 +10,9 @@ export default function GameHub() {
   const [somomkangModal, setSomomkangModal] = useState<"create" | "join" | null>(null);
   const [yamstoryModal, setYamstoryModal] = useState<"create" | "join" | null>(null);
   
+  // ✨ State สำหรับเปิด/ปิดหน้ากติกา
+  const [showRules, setShowRules] = useState(false);
+  
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [rounds, setRounds] = useState(1);
   const [yamMaxPlayers, setYamMaxPlayers] = useState(4);
@@ -60,7 +63,6 @@ export default function GameHub() {
   return (
     <div className="relative min-h-dvh flex flex-col items-center justify-center bg-gray-900 overflow-hidden font-sans">
       
-      {/* ✨ พื้นหลังเคลื่อนไหวในหน้าแรก (สัญลักษณ์เกมลอยได้) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <motion.div animate={{ y: [0, -30, 0], rotate: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }} className="absolute top-10 left-10 text-8xl md:text-9xl text-gold opacity-30 blur-[2px]">🃏</motion.div>
         <motion.div animate={{ y: [0, 30, 0], rotate: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }} className="absolute bottom-20 right-10 md:right-20 text-8xl md:text-9xl text-blue-500 opacity-30 blur-[2px]">✍️</motion.div>
@@ -69,11 +71,14 @@ export default function GameHub() {
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 animate-pulse"></div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} className="z-10 text-center mb-10">
+      <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} className="z-10 text-center mb-6">
         <h1 className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-amber-300 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]">
           Vorvare&apos;s Arcade
         </h1>
-        {/* ❌ เอาคำว่า "ศูนย์รวมเกมทำลายมิตรภาพ" ออกไปแล้วครับ */}
+        {/* ✨ ปุ่มเปิดดูกติกา */}
+        <button onClick={() => setShowRules(true)} className="mt-4 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full font-bold border border-white/20 transition-all backdrop-blur-sm">
+          📖 กติกาการเล่น
+        </button>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="z-10 w-full max-w-md px-4 flex flex-col items-center gap-6">
@@ -111,6 +116,41 @@ export default function GameHub() {
 
       <AnimatePresence>
         
+        {/* ✨ ป๊อปอัป กติกาการเล่น */}
+        {showRules && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4" onClick={() => setShowRules(false)}>
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-white/20 rounded-3xl p-6 sm:p-8 w-full max-w-2xl shadow-2xl relative max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setShowRules(false)} className="absolute top-4 right-4 text-white/50 hover:text-white text-2xl font-black bg-black/50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+              <h2 className="text-3xl font-black text-white text-center mb-6 border-b border-white/20 pb-4">📖 กติกาการเล่น</h2>
+              
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-2xl font-black text-green-400 mb-3 flex items-center gap-2">🃏 SomomKang (สมมแคง)</h3>
+                  <ul className="list-disc pl-5 text-gray-300 space-y-2 font-medium">
+                    <li>เริ่มเกมจะได้ไพ่คนละ 5 ใบ</li>
+                    <li>เมื่อถึงตา ต้อง <strong className="text-blue-400">จั่ว 1 ใบ และ ทิ้งไพ่ 1 ใบ</strong> (ทิ้งไพ่เลขซ้ำกันพร้อมกันได้)</li>
+                    <li>ถ้าคนก่อนหน้าทิ้งไพ่เลขเดียวกับที่เรามีในมือ เราสามารถกด <strong className="text-purple-400">"ไหลไพ่"</strong> ทิ้งตามได้ คนโดนไหลจะโดนปรับชิป!</li>
+                    <li>ถ้าคิดว่าแต้มในมือน้อยที่สุดแล้ว ให้กด <strong className="text-red-400">"แคง!"</strong> เพื่อจบเกม</li>
+                    <li>ถ้าแคงแล้วแต้มน้อยสุดจริง = <strong className="text-yellow-400">ชนะ!</strong></li>
+                    <li>แต่ถ้าแคงแล้วมีคนอื่นแต้มน้อยกว่า = <strong className="text-red-500">แคงล่ม (โดนปรับชิปบาน!)</strong></li>
+                    <li><strong className="text-pink-400">🔥 น็อคมืด (ชนะทันที):</strong> สเตรทฟลัช, หอน(ไพ่เหมือนกัน 4 ใบ), ฟูลเฮาส์, สี(ดอกเดียวกัน 5 ใบ), เรียง, ตอง, 50 แต้ม</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="text-2xl font-black text-blue-400 mb-3 flex items-center gap-2">✍️ นิยายยำเละ</h3>
+                  <ul className="list-disc pl-5 text-gray-300 space-y-2 font-medium">
+                    <li>สลับกันแต่งนิยายไปเรื่อยๆ จนครบจำนวนรอบที่ตั้งไว้</li>
+                    <li>ความพีคคือ... คุณจะเห็นแค่ <strong className="text-yellow-400">"5 คำสุดท้าย"</strong> ของคนที่แต่งก่อนหน้าคุณเท่านั้น!</li>
+                    <li>พยายามปะติดปะต่อเรื่องราวให้ได้ หรือจะกาวให้หลุดโลกไปเลยก็ได้!</li>
+                    <li>เมื่อครบกำหนดรอบ เกมจะสรุปเรื่องราวทั้งหมดให้ทุกคนอ่านพร้อมกัน</li>
+                  </ul>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {/* กล่อง SomomKang */}
         {somomkangModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSomomkangModal(null)}>
