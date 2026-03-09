@@ -78,6 +78,61 @@ function resolveKang(roomId, callerId) {
 }
 
 // ==========================================
+// 🎰 ระบบเกม 4: Gacha Hell
+// ==========================================
+const gachaRooms = new Map();
+
+function getOrCreateGachaRoom(roomId) {
+  let room = gachaRooms.get(roomId);
+  if (!room) {
+    room = {
+      id: roomId,
+      hostId: null,
+      status: "waiting",
+      players: [],
+      maxPlayers: 8,
+      currentTurnIndex: null,
+      deckCount: 0,
+      lastCard: null,
+      pendingCard: null,
+      history: []
+    };
+    gachaRooms.set(roomId, room);
+  }
+  return room;
+}
+
+function buildGachaState(room) {
+  return {
+    roomId: room.id,
+    hostId: room.hostId,
+    status: room.status,
+    players: room.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      connected: p.connected,
+      chips: p.chips
+    })),
+    currentTurnPlayerId:
+      room.currentTurnIndex != null && room.players[room.currentTurnIndex]
+        ? room.players[room.currentTurnIndex].id
+        : null,
+    deckCount: room.deckCount,
+    lastCard: room.lastCard,
+    history: room.history,
+    maxPlayers: room.maxPlayers,
+    pendingCard: room.pendingCard
+  };
+}
+
+function broadcastGachaState(roomId) {
+  const room = gachaRooms.get(roomId);
+  if (!room) return;
+  const state = buildGachaState(room);
+  io.to(`gacha_${roomId}`).emit("gacha_state", state);
+}
+
+// ==========================================
 // ✍️ ระบบเกม 2: นิยายยำเละ (Yamstory) (อยู่ครบ 100%)
 // ==========================================
 const yamRooms = new Map();
@@ -250,6 +305,111 @@ io.on("connection", (socket) => {
     room.racers = JSON.parse(JSON.stringify(RACER_PROFILES)).map(r => ({ ...r, progress: 0 }));
     room.players.forEach(p => { p.betAmount = 0; p.betRacerId = null; p.wonAmount = 0; });
     broadcastRacingState(roomId);
+  });
+
+  // --- Gacha Hell ---
+  socket.on("join_gacha_room", ({ roomId, username, maxPlayers }) => {
+    if (!roomId) return;
+    const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เสี่ยงดวง";
+    const room = getOrCreateGachaRoom(roomId);
+
+    if (room.players.length === 0) {
+      room.hostId = socket.id;
+      if (maxPlayers) room.maxPlayers = maxPlayers;
+    }
+
+    let existingPlayer = room.players.find((p) => p.name === safeName);
+    if (existingPlayer) {
+      if (room.hostId === existingPlayer.id) room.hostId = socket.id;
+      existingPlayer.id = socket.id;
+      existingPlayer.connected = true;
+    } else {
+      if (room.status !== "waiting") {
+        socket.emit("gacha_error", { message: "เกมเริ่มไปแล้ว" });
+        return;
+      }
+      if (room.players.length >= room.maxPlayers) {
+        socket.emit("gacha_error", { message: "ห้องเต็มแล้ว" });
+        return;
+      }
+      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500 });
+    }
+
+    socket.join(`gacha_${roomId}`);
+    socket.data.gachaRoomId = roomId;
+    broadcastGachaState(roomId);
+  });
+
+  socket.on("start_gacha", ({ roomId }) => {
+    const room = gachaRooms.get(roomId);
+    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
+    if (room.players.length < 2) return;
+
+    room.status = "playing";
+    room.currentTurnIndex = 0;
+    room.deckCount = 30;
+    room.lastCard = null;
+    room.pendingCard = null;
+    room.history = [];
+
+    broadcastGachaState(roomId);
+  });
+
+  socket.on("draw_gacha", ({ roomId }) => {
+    const room = gachaRooms.get(roomId);
+    if (!room || room.status !== "playing" || room.deckCount <= 0) return;
+
+    const playerIndex = room.players.findIndex((p) => p.id === socket.id);
+    if (playerIndex === -1 || playerIndex !== room.currentTurnIndex) return;
+    const player = room.players[playerIndex];
+
+    const delta = Math.floor(Math.random() * 801) - 400; // -400 .. 400
+    const gained = delta >= 0;
+
+    if (delta !== 0) {
+      player.chips += delta;
+    }
+
+    const card = {
+      id: `gacha-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: gained ? "โชคดี!" : "ซวยจัด!",
+      emoji: gained ? "🎁" : "💀",
+      desc: gained ? `ได้รับชิป ${delta} 💰` : `เสียชิป ${-delta} 💰`,
+      player: player.name,
+      log: gained
+        ? `${player.name} เปิดได้ +${delta} ชิป` 
+        : `${player.name} เปิดได้ -${-delta} ชิป`,
+      type: "normal",
+      val: delta
+    };
+
+    room.lastCard = card;
+    room.history = [card.log, ...room.history].slice(0, 100);
+    room.deckCount = Math.max(0, room.deckCount - 1);
+
+    if (room.deckCount === 0) {
+      room.status = "ended";
+    } else {
+      const nextIndex =
+        room.players.length > 0 ? (playerIndex + 1) % room.players.length : null;
+      room.currentTurnIndex = nextIndex;
+    }
+
+    broadcastGachaState(roomId);
+  });
+
+  socket.on("reset_gacha", ({ roomId }) => {
+    const room = gachaRooms.get(roomId);
+    if (!room || room.hostId !== socket.id) return;
+
+    room.status = "waiting";
+    room.currentTurnIndex = null;
+    room.deckCount = 0;
+    room.lastCard = null;
+    room.pendingCard = null;
+    room.history = [];
+
+    broadcastGachaState(roomId);
   });
 
   // --- Disconnect Handler สำหรับทุกเกม (แก้บั๊กห้องผีสิง) ---
