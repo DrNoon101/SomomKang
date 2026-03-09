@@ -11,6 +11,8 @@ export default function GameHub() {
   const [yamstoryModal, setYamstoryModal] = useState<"create" | "join" | null>(null);
   const [racingModal, setRacingModal] = useState<"create" | "join" | null>(null);
   const [gachaModal, setGachaModal] = useState<"create" | "join" | null>(null);
+  // ✨ เพิ่ม State สำหรับ Deck Builder
+  const [deckModal, setDeckModal] = useState<"create" | "join" | null>(null);
   
   const [showRules, setShowRules] = useState(false);
   
@@ -20,6 +22,8 @@ export default function GameHub() {
   const [yamRounds, setYamRounds] = useState(5);
   const [racingMaxPlayers, setRacingMaxPlayers] = useState(8);
   const [gachaMaxPlayers, setGachaMaxPlayers] = useState(8);
+  // ✨ เพิ่ม Max Players สำหรับ Deck Builder
+  const [deckMaxPlayers, setDeckMaxPlayers] = useState(2);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -30,15 +34,24 @@ export default function GameHub() {
 
   const checkUsername = () => { if (!username.trim()) { alert("กรุณาใส่ชื่อสุดปั่นก่อนครับ!"); return false; } sessionStorage.setItem("somomkang_username", username.trim()); return true; };
 
-  const openSomomkang = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setYamstoryModal(null); setRacingModal(null); setGachaModal(null); setSomomkangModal(mode); };
-  const openYamstory = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setRacingModal(null); setGachaModal(null); setYamstoryModal(mode); };
-  const openRacing = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setYamstoryModal(null); setGachaModal(null); setRacingModal(mode); };
-  const openGacha = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setYamstoryModal(null); setRacingModal(null); setGachaModal(mode); };
+  const openSomomkang = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setYamstoryModal(null); setRacingModal(null); setGachaModal(null); setDeckModal(null); setSomomkangModal(mode); };
+  const openYamstory = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setRacingModal(null); setGachaModal(null); setDeckModal(null); setYamstoryModal(mode); };
+  const openRacing = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setYamstoryModal(null); setGachaModal(null); setDeckModal(null); setRacingModal(mode); };
+  const openGacha = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setYamstoryModal(null); setRacingModal(null); setDeckModal(null); setGachaModal(mode); };
+  // ✨ เพิ่มฟังก์ชันเปิด Modal ของ Deck Builder
+  const openDeckBuilder = (mode: "create" | "join") => { if (!checkUsername()) return; setRoomId(""); setSomomkangModal(null); setYamstoryModal(null); setRacingModal(null); setGachaModal(null); setDeckModal(mode); };
 
   const executeSomomkang = () => { if (!roomId.trim()) { alert("ใส่รหัสห้องด้วยครับ!"); return; } sessionStorage.setItem("somomkang_mode", somomkangModal || "join"); if (somomkangModal === "create") { sessionStorage.setItem("somomkang_maxPlayers", maxPlayers.toString()); sessionStorage.setItem("somomkang_rounds", rounds.toString()); } window.location.href = `/game?room=${roomId.trim()}`; };
   const executeYamstory = () => { if (!roomId.trim()) { alert("ใส่รหัสห้องด้วยครับ!"); return; } sessionStorage.setItem("somomkang_mode", yamstoryModal || "join"); if (yamstoryModal === "create") { sessionStorage.setItem("yamstory_maxPlayers", yamMaxPlayers.toString()); sessionStorage.setItem("yamstory_rounds", yamRounds.toString()); } window.location.href = `/yamstory?room=${roomId.trim()}`; };
   const executeRacing = () => { if (!roomId.trim()) { alert("ใส่รหัสห้องด้วยครับ!"); return; } sessionStorage.setItem("somomkang_mode", racingModal || "join"); if (racingModal === "create") { sessionStorage.setItem("racing_maxPlayers", racingMaxPlayers.toString()); } window.location.href = `/racing?room=${roomId.trim()}`; };
   const executeGacha = () => { if (!roomId.trim()) { alert("ใส่รหัสห้องด้วยครับ!"); return; } sessionStorage.setItem("somomkang_mode", gachaModal || "join"); if (gachaModal === "create") { sessionStorage.setItem("gacha_maxPlayers", gachaMaxPlayers.toString()); } window.location.href = `/gacha?room=${roomId.trim()}`; };
+  // ✨ เพิ่มฟังก์ชันรันเกม Deck Builder
+  const executeDeckBuilder = () => { 
+    if (!roomId.trim()) { alert("ใส่รหัสห้องด้วยครับ!"); return; } 
+    sessionStorage.setItem("deckbuilder_mode", deckModal || "join"); 
+    if (deckModal === "create") { sessionStorage.setItem("deckbuilder_maxPlayers", deckMaxPlayers.toString()); } 
+    window.location.href = `/deckbuilder?room=${roomId.trim()}&name=${username}`; 
+  };
 
   return (
     <div className="relative min-h-dvh flex flex-col items-center justify-center bg-gray-900 overflow-hidden font-sans pb-10">
@@ -63,8 +76,8 @@ export default function GameHub() {
           <input type="text" placeholder="ใส่ชื่อสุดปั่น..." value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-5 py-4 bg-black/50 border-2 border-white/10 rounded-xl text-white text-lg font-bold outline-none focus:border-gold focus:ring-2 focus:ring-gold/50 transition-all text-center" maxLength={12} />
         </div>
 
-        {/* ✨ 4 เกมเรียงกัน */}
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* ✨ 5 เกมเรียงกัน (ปรับ Grid ให้สวยงาม) */}
+        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 justify-center">
           <div className="bg-gradient-to-br from-green-800 to-green-950 p-5 rounded-3xl border border-green-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 shadow-lg">
             <div className="text-center">
               <div className="text-4xl mb-2">🃏</div>
@@ -112,6 +125,19 @@ export default function GameHub() {
               <button type="button" onClick={() => openGacha("join")} className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-sm border border-white/20">เข้าร่วม</button>
             </div>
           </div>
+
+          {/* ✨ การ์ดเกมใหม่ Deck Builder */}
+          <div className="bg-gradient-to-br from-cyan-900 to-slate-900 p-5 rounded-3xl border border-cyan-500/30 flex flex-col items-center justify-between gap-4 transition-transform hover:-translate-y-2 shadow-lg lg:col-start-2">
+            <div className="text-center">
+              <div className="text-4xl mb-2">⚔️</div>
+              <h2 className="text-white font-black text-xl">Deck Builder</h2>
+              <p className="text-white/60 text-xs mt-1">จัดคอมโบ 4 แฟคชั่น</p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button type="button" onClick={() => openDeckBuilder("create")} className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-lg text-sm">ตั้งตี้ไพ่</button>
+              <button type="button" onClick={() => openDeckBuilder("join")} className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-sm border border-white/20">เข้าร่วม</button>
+            </div>
+          </div>
         </div>
       </motion.div>
 
@@ -140,7 +166,7 @@ export default function GameHub() {
                   </ul>
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-orange-400 mb-2">🐎 แข่งม้า(กาว)มรณะ</h3>
+                  <h3 className="text-xl font-black text-orange-400 mb-2">🐎 แข่งม้ามรณะ</h3>
                   <ul className="list-disc pl-5 text-gray-300 text-sm space-y-1">
                     <li>แทงสัตว์ที่จะเข้าเส้นชัยก่อน</li>
                     <li>คนแทงถูก แบ่งเงินกองกลางจากคนแทงผิด</li>
@@ -154,12 +180,20 @@ export default function GameHub() {
                     <li>ไพ่หมดกอง ใครเงินเยอะสุดชนะ</li>
                   </ul>
                 </div>
+                <div className="sm:col-span-2">
+                  <h3 className="text-xl font-black text-cyan-400 mb-2">⚔️ Deck Builder (มาใหม่!)</h3>
+                  <ul className="list-disc pl-5 text-gray-300 text-sm space-y-1">
+                    <li>ใช้เงิน (Gold) ซื้อการ์ดจากตลาดกลางเข้าเด็คตัวเอง</li>
+                    <li>จัดคอมโบการ์ดสีเดียวกัน (Somom, Angles, Musician, Cassanova)</li>
+                    <li>ใช้พลังโจมตี (Combat) ฟาดพลังชีวิตเพื่อนให้เหลือ 0!</li>
+                  </ul>
+                </div>
               </div>
             </motion.div>
           </motion.div>
         )}
 
-        {/* Modal: สมมแคง (แบบเต็ม ไม่ตัดทิ้งแล้ว!) */}
+        {/* Modal: สมมแคง */}
         {somomkangModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSomomkangModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-green-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -201,7 +235,7 @@ export default function GameHub() {
           </motion.div>
         )}
 
-        {/* Modal: นิยายยำเละ (แบบเต็ม) */}
+        {/* Modal: นิยายยำเละ */}
         {yamstoryModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setYamstoryModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -245,7 +279,7 @@ export default function GameHub() {
           </motion.div>
         )}
 
-        {/* Modal: แข่งม้ามรณะ (แบบเต็ม) */}
+        {/* Modal: แข่งม้ามรณะ */}
         {racingModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setRacingModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-orange-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -279,7 +313,7 @@ export default function GameHub() {
           </motion.div>
         )}
 
-        {/* Modal: กาชาปองนรก (เพิ่มใหม่) */}
+        {/* Modal: กาชาปองนรก */}
         {gachaModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setGachaModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-purple-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -293,6 +327,27 @@ export default function GameHub() {
                   </select>
                 )}
                 <button type="button" onClick={executeGacha} className="w-full py-4 rounded-xl text-white font-black text-lg transition-all shadow-lg mt-2 bg-gradient-to-r from-purple-500 to-fuchsia-600 hover:scale-[1.02]">เข้าไปลุย!</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ✨ Modal ใหม่: Deck Builder */}
+        {deckModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setDeckModal(null)}>
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-cyan-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => setDeckModal(null)} className="absolute top-4 right-4 text-white/50 hover:text-white text-xl">✕</button>
+              <h2 className="text-2xl font-black text-white text-center mb-6">{deckModal === "create" ? "⚔️ ตั้งตี้ไพ่คอมโบ" : "🚪 เข้าร่วมศึก"}<div className="text-sm mt-1 font-medium text-cyan-400">เกม: Deck Builder</div></h2>
+              <div className="space-y-4">
+                <input type="text" placeholder="รหัสห้อง" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") executeDeckBuilder(); }} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-cyan-500 uppercase text-center text-xl tracking-widest" />
+                {deckModal === "create" && (
+                  <select value={deckMaxPlayers} onChange={(e) => setDeckMaxPlayers(Number(e.target.value))} className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white outline-none">
+                    <option value={2}>2 คน (ดวล 1v1)</option>
+                    <option value={3}>3 คน</option>
+                    <option value={4}>4 คน</option>
+                  </select>
+                )}
+                <button type="button" onClick={executeDeckBuilder} className="w-full py-4 rounded-xl text-black font-black text-lg transition-all shadow-lg mt-2 bg-gradient-to-r from-cyan-400 to-blue-500 hover:scale-[1.02]">เข้าไปฟาด!</button>
               </div>
             </motion.div>
           </motion.div>

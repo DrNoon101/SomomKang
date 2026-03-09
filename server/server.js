@@ -13,6 +13,27 @@ const io = new Server(httpServer, { cors: { origin: "*", methods: ["GET", "POST"
 app.get("/", (req, res) => res.send("Arcade Server is running."));
 
 // ==========================================
+// ⚔️ ระบบเกม 5: Deck Builder (Foundation)
+// ==========================================
+const deckRooms = new Map();
+
+function getOrCreateDeckRoom(roomId) {
+  let room = deckRooms.get(roomId);
+  if (!room) {
+    // โครงสร้าง State พื้นฐานสุดๆ
+    room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 2 }; 
+    deckRooms.set(roomId, room);
+  }
+  return room;
+}
+
+function broadcastDeckState(roomId) {
+  const room = deckRooms.get(roomId);
+  if (!room) return;
+  io.to(`deck_${roomId}`).emit("deck_state", room);
+}
+
+// ==========================================
 // 🃏 ระบบเกม 1: SomomKang (อยู่ครบ 100%)
 // ==========================================
 const SUITS = ["spades", "hearts", "diamonds", "clubs"]; 
@@ -788,6 +809,34 @@ io.on("connection", (socket) => {
     broadcastGachaState(roomId);
   });
 
+  // --- Events: ⚔️ Deck Builder ---
+  socket.on("join_deck_room", ({ roomId, username, maxPlayers }) => {
+    if (!roomId) return;
+    const safeName = username ? String(username).trim() : "นักรบไร้นาม";
+    const room = getOrCreateDeckRoom(roomId);
+
+    if (room.players.length === 0) {
+      room.hostId = socket.id;
+      if (maxPlayers) room.maxPlayers = maxPlayers;
+    }
+
+    let existingPlayer = room.players.find(p => p.name === safeName);
+    if (existingPlayer) {
+      if (room.hostId === existingPlayer.id) room.hostId = socket.id;
+      existingPlayer.id = socket.id;
+      existingPlayer.connected = true;
+    } else {
+      if (room.status !== "waiting") return socket.emit("deck_error", { message: "ศึกเริ่มไปแล้ว!" });
+      if (room.players.length >= room.maxPlayers) return socket.emit("deck_error", { message: "ปาร์ตี้เต็มแล้ว!" });
+      
+      room.players.push({ id: socket.id, name: safeName, connected: true });
+    }
+
+    socket.join(`deck_${roomId}`);
+    socket.data.deckRoomId = roomId; // แปะป้ายไว้ตอนเน็ตหลุด
+    broadcastDeckState(roomId);
+  });
+
   // --- Disconnect Handler สำหรับทุกเกม (แก้บั๊กห้องผีสิง) ---
   socket.on("disconnect", () => {
     // 1. จัดการ SomomKang
@@ -871,6 +920,25 @@ io.on("connection", (socket) => {
         if (!room.players.some(p => p.connected)) gachaRooms.delete(gachaRoomId); 
         else broadcastGachaState(gachaRoomId); 
       } 
+    }
+
+    // จัดการ Deck Builder หลุด
+    const deckRoomId = socket.data.deckRoomId;
+    if (deckRoomId) {
+      const room = deckRooms.get(deckRoomId);
+      if (room) {
+        const playerIndex = room.players.findIndex(p => p.id === socket.id);
+        if (playerIndex !== -1) {
+          if (room.status === "waiting") room.players.splice(playerIndex, 1);
+          else room.players[playerIndex].connected = false;
+        }
+        if (room.hostId === socket.id) {
+          const nextHost = room.players.find(p => p.connected);
+          room.hostId = nextHost ? nextHost.id : null;
+        }
+        if (!room.players.some(p => p.connected)) deckRooms.delete(deckRoomId);
+        else broadcastDeckState(deckRoomId);
+      }
     }
   }); // อันนี้คือปิดของ socket.on("disconnect")
 
