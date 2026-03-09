@@ -13,11 +13,10 @@ const io = new Server(httpServer, { cors: { origin: "*", methods: ["GET", "POST"
 app.get("/", (req, res) => res.send("Arcade Server is running."));
 
 // ==========================================
-// ⚔️ ระบบเกม 5: Deck Builder (Foundation)
+// ⚔️ ระบบเกม 5: Deck Builder
 // ==========================================
 const deckRooms = new Map();
 
-// --- กฎของเกม Deck Builder (Rules Engine) ---
 function shuffleDeck(array) {
   let currentIndex = array.length, randomIndex;
   while (currentIndex !== 0) {
@@ -32,8 +31,6 @@ function createDeckMarket() {
   const add = (faction, name, emoji, cost, effect, ally) => { 
     for(let i=0; i<3; i++) deck.push({ id: `db_${id++}`, faction, name, emoji, cost, effect, ally }); 
   };
-  
-  // 🔴 Somom | 🟡 The Angles | 🔵 The Musician | 💖 Cassanova
   add('somom', 'หมัดสมม', '🔥', 2, { combat: 3 }, { combat: 2 });
   add('somom', 'ดาบคลั่ง', '🗡️', 4, { combat: 5 }, { draw: 1 });
   add('somom', 'ระเบิดพลีชีพ', '💣', 3, { combat: 5, hp: -1 }, { combat: 3 });
@@ -46,7 +43,6 @@ function createDeckMarket() {
   add('cassanova', 'โปรยเสน่ห์', '🌹', 2, { gold: 2 }, { hp: 2 });
   add('cassanova', 'เปย์ไม่อั้น', '💸', 4, { gold: 3 }, { combat: 2 });
   add('cassanova', 'หลงใหล', '💋', 3, { gold: 2, combat: 1 }, { draw: 1 });
-
   return shuffleDeck(deck);
 }
 
@@ -67,39 +63,28 @@ function drawDeckCards(player, count) {
   }
 }
 
-// อัปเกรดฟังก์ชันส่งข้อมูล (ซ่อนไพ่บนมือจากคนอื่น)
+function getOrCreateDeckRoom(roomId) {
+  let room = deckRooms.get(roomId);
+  if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 2, history: [] }; deckRooms.set(roomId, room); }
+  return room;
+}
+
 function broadcastDeckState(roomId) {
   const room = deckRooms.get(roomId); if (!room) return;
   const publicState = {
     roomId: room.id, hostId: room.hostId, status: room.status, maxPlayers: room.maxPlayers, 
-    market: room.market || [], currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null,
+    market: room.market || [], history: room.history || [],
+    currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null,
     players: room.players.map(p => ({ 
       id: p.id, name: p.name, connected: p.connected, hp: p.hp || 50, gold: p.gold || 0, combat: p.combat || 0, 
       deckCount: p.deck ? p.deck.length : 0, discardCount: p.discard ? p.discard.length : 0, playArea: p.playArea || [] 
     }))
   };
-  // ส่ง State และไพ่บนมือ (myHand) แยกให้แต่ละคน
   room.players.forEach(p => { io.to(p.id).emit("deck_state", { ...publicState, myHand: p.hand || [] }); });
 }
 
-function getOrCreateDeckRoom(roomId) {
-  let room = deckRooms.get(roomId);
-  if (!room) {
-    // โครงสร้าง State พื้นฐานสุดๆ
-    room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 2 }; 
-    deckRooms.set(roomId, room);
-  }
-  return room;
-}
-
-function broadcastDeckState(roomId) {
-  const room = deckRooms.get(roomId);
-  if (!room) return;
-  io.to(`deck_${roomId}`).emit("deck_state", room);
-}
-
 // ==========================================
-// 🃏 ระบบเกม 1: SomomKang (อยู่ครบ 100%)
+// 🃏 ระบบเกม 1: SomomKang
 // ==========================================
 const SUITS = ["spades", "hearts", "diamonds", "clubs"]; 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -168,26 +153,21 @@ function resolveKang(roomId, callerId) {
 // ==========================================
 const gachaRooms = new Map();
 
-// การ์ดกาชาปองในนรก (รวมทั้งปกติ + ใบพิเศษสุดปั่น)
 const GACHA_CARD_DEFS = [
-  // Lucky
   { type: "jackpot", name: "JACKPOT!!", emoji: "💎", group: "lucky", reqTarget: false, count: 3 },
   { type: "master_thief", name: "Master Thief", emoji: "🦹‍♂️", group: "lucky", reqTarget: false, count: 2 },
   { type: "leech", name: "Leech", emoji: "🩸", group: "lucky", reqTarget: true, count: 3 },
   { type: "robbery", name: "Robbery", emoji: "🔫", group: "lucky", reqTarget: true, count: 3 },
   { type: "assassin", name: "Assassin", emoji: "🗡️", group: "lucky", reqTarget: true, count: 2 },
-  // Unlucky
   { type: "bankruptcy", name: "Bankruptcy", emoji: "💣", group: "unlucky", reqTarget: false, count: 2 },
   { type: "tax", name: "Tax Raid", emoji: "🧾", group: "unlucky", reqTarget: false, count: 3 },
   { type: "fallen_angel", name: "Fallen Angel", emoji: "😈", group: "unlucky", reqTarget: false, count: 3 },
   { type: "trip_grass", name: "Trip Grass", emoji: "🌿", group: "unlucky", reqTarget: false, count: 3 },
   { type: "scapegoat", name: "Scapegoat", emoji: "🐐", group: "unlucky", reqTarget: true, count: 2 },
-  // Chaos
   { type: "communist", name: "Communist Uprising", emoji: "☭", group: "chaos", reqTarget: false, count: 2 },
   { type: "thanos", name: "Thanos Snap", emoji: "🧤", group: "chaos", reqTarget: false, count: 2 },
   { type: "robin_hood", name: "Robin Hood", emoji: "🏹", group: "chaos", reqTarget: false, count: 2 },
   { type: "wallet_swap", name: "Wallet Swap", emoji: "💼", group: "chaos", reqTarget: true, count: 2 },
-  // Normal ใบทั่วไป +/- ชิป
   { type: "normal_plus", name: "Bonus Chips", emoji: "💰", group: "normal", reqTarget: false, count: 8 },
   { type: "normal_minus", name: "Bad Luck", emoji: "💸", group: "normal", reqTarget: false, count: 8 }
 ];
@@ -196,264 +176,70 @@ function createGachaDeck() {
   const deck = [];
   for (const def of GACHA_CARD_DEFS) {
     for (let i = 0; i < def.count; i++) {
-      deck.push({
-        type: def.type,
-        name: def.name,
-        emoji: def.emoji,
-        group: def.group,
-        reqTarget: def.reqTarget
-      });
+      deck.push({ type: def.type, name: def.name, emoji: def.emoji, group: def.group, reqTarget: def.reqTarget });
     }
   }
-  // ใช้ฟังก์ชัน shuffle เดิมจาก SomomKang
   return shuffle(deck);
 }
 
 function getOrCreateGachaRoom(roomId) {
   let room = gachaRooms.get(roomId);
-  if (!room) {
-    room = {
-      id: roomId,
-      hostId: null,
-      status: "waiting",
-      players: [],
-      maxPlayers: 8,
-      currentTurnIndex: null,
-      deck: [],
-      deckCount: 0,
-      lastCard: null,
-      pendingCard: null,
-      pendingCardType: null,
-      history: []
-    };
-    gachaRooms.set(roomId, room);
-  }
+  if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 8, currentTurnIndex: null, deck: [], deckCount: 0, lastCard: null, pendingCard: null, pendingCardType: null, history: [] }; gachaRooms.set(roomId, room); }
   return room;
 }
 
 function buildGachaState(room) {
   return {
-    roomId: room.id,
-    hostId: room.hostId,
-    status: room.status,
-    players: room.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      connected: p.connected,
-      chips: p.chips
-    })),
-    currentTurnPlayerId:
-      room.currentTurnIndex != null && room.players[room.currentTurnIndex]
-        ? room.players[room.currentTurnIndex].id
-        : null,
-    deckCount: room.deckCount,
-    lastCard: room.lastCard,
-    history: room.history,
-    maxPlayers: room.maxPlayers,
-    pendingCard: room.pendingCard
+    roomId: room.id, hostId: room.hostId, status: room.status,
+    players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected, chips: p.chips })),
+    currentTurnPlayerId: room.currentTurnIndex != null && room.players[room.currentTurnIndex] ? room.players[room.currentTurnIndex].id : null,
+    deckCount: room.deckCount, lastCard: room.lastCard, history: room.history, maxPlayers: room.maxPlayers, pendingCard: room.pendingCard
   };
 }
 
 function broadcastGachaState(roomId) {
-  const room = gachaRooms.get(roomId);
-  if (!room) return;
-  const state = buildGachaState(room);
-  io.to(`gacha_${roomId}`).emit("gacha_state", state);
+  const room = gachaRooms.get(roomId); if (!room) return;
+  const state = buildGachaState(room); io.to(`gacha_${roomId}`).emit("gacha_state", state);
 }
 
-function getRichestPlayer(room) {
-  if (!room.players.length) return null;
-  return room.players.reduce((best, p) => (p.chips > best.chips ? p : best), room.players[0]);
-}
-
-function getPoorestPlayer(room) {
-  if (!room.players.length) return null;
-  return room.players.reduce((best, p) => (p.chips < best.chips ? p : best), room.players[0]);
-}
+function getRichestPlayer(room) { if (!room.players.length) return null; return room.players.reduce((best, p) => (p.chips > best.chips ? p : best), room.players[0]); }
+function getPoorestPlayer(room) { if (!room.players.length) return null; return room.players.reduce((best, p) => (p.chips < best.chips ? p : best), room.players[0]); }
 
 function applyGachaEffect(room, sourcePlayer, targetPlayer, cardType) {
-  const players = room.players;
-  let log = "";
-  let desc = "";
-  let val = 0;
-
-  const safeTake = (from, amount) => {
-    const real = Math.max(0, Math.min(from.chips, amount));
-    from.chips -= real;
-    return real;
-  };
+  const players = room.players; let log = ""; let desc = ""; let val = 0;
+  const safeTake = (from, amount) => { const real = Math.max(0, Math.min(from.chips, amount)); from.chips -= real; return real; };
 
   switch (cardType) {
-    case "jackpot": {
-      val = 1000;
-      sourcePlayer.chips += val;
-      desc = `ได้รับชิป ${val} 💰`;
-      log = `${sourcePlayer.name} เปิด JACKPOT! +${val} ชิป`;
-      break;
-    }
-    case "master_thief": {
-      const richest = getRichestPlayer(room);
-      if (!richest || richest.id === sourcePlayer.id) {
-        desc = "พยายามจะขโมยแต่ไม่มีใครรวยกว่า...";
-        log = `${sourcePlayer.name} พยายามเป็น Master Thief แต่ล้มเหลว`;
-        break;
-      }
-      const steal = safeTake(richest, 500);
-      sourcePlayer.chips += steal;
-      val = steal;
-      desc = `ขโมยชิป ${steal} จาก ${richest.name}`;
-      log = `${sourcePlayer.name} เป็น Master Thief! ขโมย ${steal} ชิป จาก ${richest.name}`;
-      break;
-    }
-    case "leech": {
-      if (!targetPlayer) break;
-      const steal = safeTake(targetPlayer, 300);
-      sourcePlayer.chips += steal;
-      val = steal;
-      desc = `ดูดชิป ${steal} จาก ${targetPlayer.name}`;
-      log = `${sourcePlayer.name} ดูดชิป ${steal} จาก ${targetPlayer.name}`;
-      break;
-    }
-    case "robbery": {
-      if (!targetPlayer) break;
-      const steal = safeTake(targetPlayer, Math.floor(targetPlayer.chips / 2));
-      sourcePlayer.chips += steal;
-      val = steal;
-      desc = `ปล้น ${targetPlayer.name} ได้ ${steal} ชิป`;
-      log = `${sourcePlayer.name} ปล้น ${targetPlayer.name}! ได้ไป ${steal} ชิป`;
-      break;
-    }
-    case "assassin": {
-      if (!targetPlayer) break;
-      const lost = safeTake(targetPlayer, 500);
-      val = -lost;
-      desc = `ลอบสังหารกระเป๋า ${targetPlayer.name} หายไป ${lost} ชิป`;
-      log = `${sourcePlayer.name} ส่งนักฆ่าเก็บ ${targetPlayer.name} (-${lost} ชิป)`;
-      break;
-    }
-    case "bankruptcy": {
-      const before = sourcePlayer.chips;
-      sourcePlayer.chips = 100;
-      val = sourcePlayer.chips - before;
-      desc = `ล้มละลาย เหลือชิปแค่ 100 💀`;
-      log = `${sourcePlayer.name} ล้มละลาย! เหลือชิป 100 เดียว`;
-      break;
-    }
-    case "tax": {
-      let totalPaid = 0;
-      for (const p of players) {
-        if (p.id === sourcePlayer.id) continue;
-        if (sourcePlayer.chips <= 0) break;
-        const paid = safeTake(sourcePlayer, 100);
-        p.chips += paid;
-        totalPaid += paid;
-      }
-      val = -totalPaid;
-      desc = `จ่ายภาษีรวม ${totalPaid} ชิป ให้คนอื่นทั้งโต๊ะ`;
-      log = `${sourcePlayer.name} ถูกสรรพากรบุก! จ่ายภาษีรวม ${totalPaid} ชิป`;
-      break;
-    }
-    case "fallen_angel": {
-      const before = sourcePlayer.chips;
-      sourcePlayer.chips = Math.floor(sourcePlayer.chips / 2);
-      val = sourcePlayer.chips - before;
-      desc = `จากเทพกลายเป็นตกสวรรค์ เหลือครึ่งเดียว`;
-      log = `${sourcePlayer.name} ตกสวรรค์! ชิปหายไปครึ่งหนึ่ง`;
-      break;
-    }
-    case "trip_grass": {
-      const lost = safeTake(sourcePlayer, 500);
-      val = -lost;
-      desc = `สะดุดหญ้ากาว ล้มเสียชิป ${lost}`;
-      log = `${sourcePlayer.name} สะดุดหญ้ากาว! เสียไป ${lost} ชิป`;
-      break;
-    }
-    case "scapegoat": {
-      if (!targetPlayer) break;
-      const give = safeTake(sourcePlayer, 500);
-      targetPlayer.chips += give;
-      val = -give;
-      desc = `ถูกบังคับให้เป็นแพะ รับกรรมให้ ${targetPlayer.name} จำนวน ${give} ชิป`;
-      log = `${sourcePlayer.name} กลายเป็นแพะ ส่ง ${give} ชิป ให้ ${targetPlayer.name}`;
-      break;
-    }
-    case "communist": {
-      const total = players.reduce((sum, p) => sum + p.chips, 0);
-      const avg = Math.floor(total / players.length || 0);
-      players.forEach((p) => {
-        p.chips = avg;
-      });
-      desc = `แดงทั้งโต๊ะ แบ่งชิปเท่าๆ กันคนละ ${avg}`;
-      log = `พลังคอมมิวนิสต์! ทุกคนมีชิปเท่ากันคนละ ${avg}`;
-      break;
-    }
-    case "thanos": {
-      const chipsArr = players.map((p) => p.chips);
-      const shuffled = shuffle(chipsArr.slice());
-      players.forEach((p, idx) => {
-        p.chips = shuffled[idx];
-      });
-      desc = `ดีดนิ้วสลับโชค ชิปทุกคนถูกสลับตำแหน่ง`;
-      log = `Thanos ดีดนิ้ว! ชิปทุกคนถูกสลับกันมั่วไปหมด`;
-      break;
-    }
-    case "robin_hood": {
-      const richest = getRichestPlayer(room);
-      const poorest = getPoorestPlayer(room);
-      if (!richest || !poorest || richest.id === poorest.id) {
-        desc = `ไม่มีใครให้ปล้นหรือให้ จึงไม่เกิดอะไรขึ้น`;
-        log = `Robin Hood โผล่มาแต่จับเหยื่อไม่ได้`;
-        break;
-      }
-      const give = safeTake(richest, 500);
-      poorest.chips += give;
-      val = give;
-      desc = `ปล้นคนรวย ${richest.name} ${give} ชิป ไปให้คนจน ${poorest.name}`;
-      log = `Robin Hood ปล้น ${richest.name} ${give} ชิป ไปแจก ${poorest.name}`;
-      break;
-    }
-    case "wallet_swap": {
-      if (!targetPlayer) break;
-      const tmp = sourcePlayer.chips;
-      sourcePlayer.chips = targetPlayer.chips;
-      targetPlayer.chips = tmp;
-      desc = `สลับกระเป๋าชิปกับ ${targetPlayer.name} แบบเนียนๆ`;
-      log = `${sourcePlayer.name} สลับกระเป๋ากับ ${targetPlayer.name}!`;
-      break;
-    }
-    case "normal_plus": {
-      const gain = 100 + Math.floor(Math.random() * 401); // 100-500
-      sourcePlayer.chips += gain;
-      val = gain;
-      desc = `ดวงดีเล็กน้อย ได้ชิปเพิ่ม ${gain}`;
-      log = `${sourcePlayer.name} ดวงดี ได้ +${gain} ชิป`;
-      break;
-    }
-    case "normal_minus": {
-      const lost = safeTake(sourcePlayer, 100 + Math.floor(Math.random() * 401)); // 100-500
-      val = -lost;
-      desc = `ซวยเบาๆ เสียชิป ${lost}`;
-      log = `${sourcePlayer.name} ซวย เสียไป ${lost} ชิป`;
-      break;
-    }
-    default: {
-      desc = "ไม่มีอะไรเกิดขึ้น... (บั๊กหรือเปล่าเนี่ย)";
-      log = `${sourcePlayer.name} เปิดการ์ดลึกลับ แต่ดูเหมือนยังไม่ทำอะไร`;
-    }
+    case "jackpot": { val = 1000; sourcePlayer.chips += val; desc = `ได้รับชิป ${val} 💰`; log = `${sourcePlayer.name} เปิด JACKPOT! +${val} ชิป`; break; }
+    case "master_thief": { const richest = getRichestPlayer(room); if (!richest || richest.id === sourcePlayer.id) { desc = "พยายามจะขโมยแต่ไม่มีใครรวยกว่า..."; log = `${sourcePlayer.name} พยายามเป็น Master Thief แต่ล้มเหลว`; break; } const steal = safeTake(richest, 500); sourcePlayer.chips += steal; val = steal; desc = `ขโมยชิป ${steal} จาก ${richest.name}`; log = `${sourcePlayer.name} เป็น Master Thief! ขโมย ${steal} ชิป จาก ${richest.name}`; break; }
+    case "leech": { if (!targetPlayer) break; const steal = safeTake(targetPlayer, 300); sourcePlayer.chips += steal; val = steal; desc = `ดูดชิป ${steal} จาก ${targetPlayer.name}`; log = `${sourcePlayer.name} ดูดชิป ${steal} จาก ${targetPlayer.name}`; break; }
+    case "robbery": { if (!targetPlayer) break; const steal = safeTake(targetPlayer, Math.floor(targetPlayer.chips / 2)); sourcePlayer.chips += steal; val = steal; desc = `ปล้น ${targetPlayer.name} ได้ ${steal} ชิป`; log = `${sourcePlayer.name} ปล้น ${targetPlayer.name}! ได้ไป ${steal} ชิป`; break; }
+    case "assassin": { if (!targetPlayer) break; const lost = safeTake(targetPlayer, 500); val = -lost; desc = `ลอบสังหารกระเป๋า ${targetPlayer.name} หายไป ${lost} ชิป`; log = `${sourcePlayer.name} ส่งนักฆ่าเก็บ ${targetPlayer.name} (-${lost} ชิป)`; break; }
+    case "bankruptcy": { const before = sourcePlayer.chips; sourcePlayer.chips = 100; val = sourcePlayer.chips - before; desc = `ล้มละลาย เหลือชิปแค่ 100 💀`; log = `${sourcePlayer.name} ล้มละลาย! เหลือชิป 100 เดียว`; break; }
+    case "tax": { let totalPaid = 0; for (const p of players) { if (p.id === sourcePlayer.id) continue; if (sourcePlayer.chips <= 0) break; const paid = safeTake(sourcePlayer, 100); p.chips += paid; totalPaid += paid; } val = -totalPaid; desc = `จ่ายภาษีรวม ${totalPaid} ชิป ให้คนอื่นทั้งโต๊ะ`; log = `${sourcePlayer.name} ถูกสรรพากรบุก! จ่ายภาษีรวม ${totalPaid} ชิป`; break; }
+    case "fallen_angel": { const before = sourcePlayer.chips; sourcePlayer.chips = Math.floor(sourcePlayer.chips / 2); val = sourcePlayer.chips - before; desc = `จากเทพกลายเป็นตกสวรรค์ เหลือครึ่งเดียว`; log = `${sourcePlayer.name} ตกสวรรค์! ชิปหายไปครึ่งหนึ่ง`; break; }
+    case "trip_grass": { const lost = safeTake(sourcePlayer, 500); val = -lost; desc = `สะดุดหญ้ากาว ล้มเสียชิป ${lost}`; log = `${sourcePlayer.name} สะดุดหญ้ากาว! เสียไป ${lost} ชิป`; break; }
+    case "scapegoat": { if (!targetPlayer) break; const give = safeTake(sourcePlayer, 500); targetPlayer.chips += give; val = -give; desc = `ถูกบังคับให้เป็นแพะ รับกรรมให้ ${targetPlayer.name} จำนวน ${give} ชิป`; log = `${sourcePlayer.name} กลายเป็นแพะ ส่ง ${give} ชิป ให้ ${targetPlayer.name}`; break; }
+    case "communist": { const total = players.reduce((sum, p) => sum + p.chips, 0); const avg = Math.floor(total / players.length || 0); players.forEach((p) => { p.chips = avg; }); desc = `แดงทั้งโต๊ะ แบ่งชิปเท่าๆ กันคนละ ${avg}`; log = `พลังคอมมิวนิสต์! ทุกคนมีชิปเท่ากันคนละ ${avg}`; break; }
+    case "thanos": { const chipsArr = players.map((p) => p.chips); const shuffled = shuffle(chipsArr.slice()); players.forEach((p, idx) => { p.chips = shuffled[idx]; }); desc = `ดีดนิ้วสลับโชค ชิปทุกคนถูกสลับตำแหน่ง`; log = `Thanos ดีดนิ้ว! ชิปทุกคนถูกสลับกันมั่วไปหมด`; break; }
+    case "robin_hood": { const richest = getRichestPlayer(room); const poorest = getPoorestPlayer(room); if (!richest || !poorest || richest.id === poorest.id) { desc = `ไม่มีใครให้ปล้นหรือให้ จึงไม่เกิดอะไรขึ้น`; log = `Robin Hood โผล่มาแต่จับเหยื่อไม่ได้`; break; } const give = safeTake(richest, 500); poorest.chips += give; val = give; desc = `ปล้นคนรวย ${richest.name} ${give} ชิป ไปให้คนจน ${poorest.name}`; log = `Robin Hood ปล้น ${richest.name} ${give} ชิป ไปแจก ${poorest.name}`; break; }
+    case "wallet_swap": { if (!targetPlayer) break; const tmp = sourcePlayer.chips; sourcePlayer.chips = targetPlayer.chips; targetPlayer.chips = tmp; desc = `สลับกระเป๋าชิปกับ ${targetPlayer.name} แบบเนียนๆ`; log = `${sourcePlayer.name} สลับกระเป๋ากับ ${targetPlayer.name}!`; break; }
+    case "normal_plus": { const gain = 100 + Math.floor(Math.random() * 401); sourcePlayer.chips += gain; val = gain; desc = `ดวงดีเล็กน้อย ได้ชิปเพิ่ม ${gain}`; log = `${sourcePlayer.name} ดวงดี ได้ +${gain} ชิป`; break; }
+    case "normal_minus": { const lost = safeTake(sourcePlayer, 100 + Math.floor(Math.random() * 401)); val = -lost; desc = `ซวยเบาๆ เสียชิป ${lost}`; log = `${sourcePlayer.name} ซวย เสียไป ${lost} ชิป`; break; }
+    default: { desc = "ไม่มีอะไรเกิดขึ้น... (บั๊กหรือเปล่าเนี่ย)"; log = `${sourcePlayer.name} เปิดการ์ดลึกลับ แต่ดูเหมือนยังไม่ทำอะไร`; }
   }
-
   return { desc, log, val };
 }
 
 // ==========================================
-// ✍️ ระบบเกม 2: นิยายยำเละ (Yamstory) (อยู่ครบ 100%)
+// ✍️ ระบบเกม 2: นิยายยำเละ (Yamstory)
 // ==========================================
 const yamRooms = new Map();
 function getOrCreateYamRoom(roomId) { let room = yamRooms.get(roomId); if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], currentTurnIndex: null, lastWords: "", turnCount: 0, fullStory: [], maxPlayers: 4, maxRounds: 5, currentRound: 1 }; yamRooms.set(roomId, room); } return room; }
 function broadcastYamState(roomId) { const room = yamRooms.get(roomId); if (!room) return; const state = { roomId: room.id, hostId: room.hostId, status: room.status, players: room.players, currentTurnPlayerId: room.currentTurnIndex != null ? room.players[room.currentTurnIndex]?.id : null, lastWords: room.lastWords, turnCount: room.turnCount, maxPlayers: room.maxPlayers, maxRounds: room.maxRounds, currentRound: room.currentRound, fullStory: room.status === "ended" ? room.fullStory : undefined }; io.to(`yam_${roomId}`).emit("yam_state", state); }
 
 // ==========================================
-// 🏇 ระบบเกม 3: แข่งม้า(กาว)มรณะ (Drunk Racing) ✨ (ใหม่ล่าสุด!)
+// 🏇 ระบบเกม 3: แข่งม้า(กาว)มรณะ (Drunk Racing)
 // ==========================================
 const racingRooms = new Map();
 const RACER_PROFILES = [
@@ -486,17 +272,16 @@ function broadcastRacingState(roomId) {
 }
 
 // ==========================================
-// 🔌 Socket.io Events
+// 🔌 Socket.io Events (การรับส่งคำสั่งทั้งหมด)
 // ==========================================
 io.on("connection", (socket) => {
-  console.log("[Gacha][Server] New connection", { socketId: socket.id });
   // --- SomomKang ---
   socket.on("join_room", ({ roomId, username, maxPlayers }) => {
     if (!roomId) return; const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เล่น"; const room = getOrCreateRoom(roomId);
     if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
     let existingPlayer = room.players.find(p => p.name === safeName);
     if (existingPlayer) { if (room.hostId === existingPlayer.id) room.hostId = socket.id; existingPlayer.id = socket.id; existingPlayer.connected = true; } 
-    else { if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว"); if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); room.players.push({ id: socket.id, name: safeName, hand: [], connected: true, chips: 2500,hipsChange: 0 }); }
+    else { if (room.status !== "waiting") return sendError(socket, "เกมเริ่มไปแล้ว"); if (room.players.length >= room.maxPlayers) return sendError(socket, "ห้องเต็มแล้ว"); room.players.push({ id: socket.id, name: safeName, hand: [], connected: true, chips: 2500, roundChipsChange: 0 }); }
     socket.join(roomId); socket.data.roomId = roomId; broadcastState(roomId);
   });
   socket.on("start_game", ({ roomId }) => { const room = rooms.get(roomId); if (room?.status === "waiting" && room.hostId === socket.id) startGame(roomId); });
@@ -559,59 +344,40 @@ io.on("connection", (socket) => {
     else {
       if (room.status !== "waiting") return socket.emit("racing_error", { message: "ม้าออกตัวไปแล้ว รอตาหน้านะ!" });
       if (room.players.length >= room.maxPlayers) return socket.emit("racing_error", { message: "สนามแข่งเต็มแล้ว!" });
-      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500,Amount: 0, betRacerId: null, wonAmount: 0 });
+      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500, betAmount: 0, betRacerId: null, wonAmount: 0 });
     }
     socket.join(`racing_${roomId}`); socket.data.racingRoomId = roomId; broadcastRacingState(roomId);
   });
-
   socket.on("place_bet", ({ roomId, racerId, amount }) => {
     const room = racingRooms.get(roomId); if (!room || room.status !== "waiting") return;
     const player = room.players.find(p => p.id === socket.id); if (!player || player.chips < amount) return;
-    
-    // คืนเงินเดิมพันเก่าก่อน (ถ้าเคยแทงไปแล้ว)
     if (player.betAmount > 0) { player.chips += player.betAmount; room.totalPool -= player.betAmount; }
-    
-    player.betRacerId = racerId; player.betAmount = amount;
-    player.chips -= amount; room.totalPool += amount;
-    broadcastRacingState(roomId);
+    player.betRacerId = racerId; player.betAmount = amount; player.chips -= amount; room.totalPool += amount; broadcastRacingState(roomId);
   });
-
   socket.on("start_race", ({ roomId }) => { 
     const room = racingRooms.get(roomId); 
     if (!room || room.status !== "waiting" || room.hostId !== socket.id) return; 
     room.status = "playing"; room.winnerRacerId = null; room.players.forEach(p => p.wonAmount = 0); 
     broadcastRacingState(roomId); 
-    
-    // 🔥 ปรับความกาวให้ลุ้นนานขึ้น!
     room.raceInterval = setInterval(() => { 
       let hasWinner = false; 
       room.racers.forEach(r => { 
-        // 🐢 สุ่มเดินหน้า 0-3 เปอร์เซ็นต์ (ลดจากเดิม 0-8 เพื่อให้วิ่งช้าลงแบบอืดๆ)
         const move = Math.floor(Math.random() * 4); 
         r.progress += move; 
-        if (r.progress >= 100) { 
-          r.progress = 100; hasWinner = true; 
-          if(!room.winnerRacerId) room.winnerRacerId = r.id; 
-        } 
+        if (r.progress >= 100) { r.progress = 100; hasWinner = true; if(!room.winnerRacerId) room.winnerRacerId = r.id; } 
       }); 
       broadcastRacingState(roomId); 
-      
       if (hasWinner) { 
         clearInterval(room.raceInterval); room.status = "ended"; 
         const winners = room.players.filter(p => p.betRacerId === room.winnerRacerId); 
         if (winners.length > 0) { 
           const totalWinningBets = winners.reduce((sum, p) => sum + p.betAmount, 0); 
-          winners.forEach(p => { 
-            const proportion = p.betAmount / totalWinningBets; 
-            p.wonAmount = Math.floor(room.totalPool * proportion); 
-            p.chips += p.wonAmount; 
-          }); 
+          winners.forEach(p => { const proportion = p.betAmount / totalWinningBets; p.wonAmount = Math.floor(room.totalPool * proportion); p.chips += p.wonAmount; }); 
         } 
         broadcastRacingState(roomId); 
       } 
-    }, 300); // ⏱️ ปรับให้หน้าจอขยับสมูทขึ้น (ทุกๆ 0.3 วินาที) แต่อัตราก้าวเดินสั้นลง
+    }, 300); 
   });
-
   socket.on("reset_race", ({ roomId }) => {
     const room = racingRooms.get(roomId); if (!room || room.hostId !== socket.id) return;
     room.status = "waiting"; room.totalPool = 0; room.winnerRacerId = null;
@@ -622,551 +388,151 @@ io.on("connection", (socket) => {
 
   // --- Gacha Hell ---
   socket.on("join_gacha_room", ({ roomId, username, maxPlayers }) => {
-    console.log("[Gacha][Server] join_gacha_room received", { socketId: socket.id, roomId, username, maxPlayers });
-    if (!roomId) return;
-    const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เสี่ยงดวง";
-    const room = getOrCreateGachaRoom(roomId);
-    console.log("[Gacha][Server] current gacha room before join", {
-      roomId,
-      status: room.status,
-      players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected }))
-    });
-
-    if (room.players.length === 0) {
-      room.hostId = socket.id;
-      if (maxPlayers) room.maxPlayers = maxPlayers;
-    }
-
+    if (!roomId) return; const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เสี่ยงดวง"; const room = getOrCreateGachaRoom(roomId);
+    if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
     let existingPlayer = room.players.find((p) => p.name === safeName);
-    if (existingPlayer) {
-      if (room.hostId === existingPlayer.id) room.hostId = socket.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
-    } else {
-      if (room.status !== "waiting") {
-        socket.emit("gacha_error", { message: "เกมเริ่มไปแล้ว" });
-        return;
-      }
-      if (room.players.length >= room.maxPlayers) {
-        socket.emit("gacha_error", { message: "ห้องเต็มแล้ว" });
-        return;
-      }
-      room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500 });
-      console.log("[Gacha][Server] new player joined room", {
-        roomId,
-        playerId: socket.id,
-        name: safeName,
-        playersCount: room.players.length
-      });
-    }
-
-    const roomName = `gacha_${roomId}`;
-    console.log("[Gacha][Server] joining socket to room", { socketId: socket.id, roomName });
-    socket.join(roomName);
-    socket.data.gachaRoomId = roomId;
-    console.log("[Gacha][Server] broadcasting initial gacha_state after join", { roomId });
-    broadcastGachaState(roomId);
+    if (existingPlayer) { if (room.hostId === existingPlayer.id) room.hostId = socket.id; existingPlayer.id = socket.id; existingPlayer.connected = true; } 
+    else { if (room.status !== "waiting") return socket.emit("gacha_error", { message: "เกมเริ่มไปแล้ว" }); if (room.players.length >= room.maxPlayers) return socket.emit("gacha_error", { message: "ห้องเต็มแล้ว" }); room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500 }); }
+    socket.join(`gacha_${roomId}`); socket.data.gachaRoomId = roomId; broadcastGachaState(roomId);
   });
-
   socket.on("start_gacha", ({ roomId }) => {
-    const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "waiting" || room.hostId !== socket.id) {
-      console.warn("[Gacha][Server] start_gacha rejected", {
-        socketId: socket.id,
-        roomExists: !!room,
-        status: room && room.status,
-        hostId: room && room.hostId
-      });
-      return;
-    }
-    if (room.players.length < 2) {
-      console.warn("[Gacha][Server] start_gacha rejected because not enough players", {
-        roomId,
-        players: room.players.length
-      });
-      return;
-    }
-
-    room.deck = createGachaDeck();
-    room.deckCount = room.deck.length;
-    room.status = "playing";
-    room.currentTurnIndex = 0;
-    room.lastCard = null;
-    room.pendingCard = null;
-    room.pendingCardType = null;
-    room.history = [];
-    console.log("[Gacha][Server] start_gacha -> broadcasting state", {
-      roomId,
-      players: room.players.length,
-      deckCount: room.deckCount
-    });
+    const room = gachaRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return; if (room.players.length < 2) return;
+    room.deck = createGachaDeck(); room.deckCount = room.deck.length; room.status = "playing"; room.currentTurnIndex = 0; room.lastCard = null; room.pendingCard = null; room.pendingCardType = null; room.history = [];
     broadcastGachaState(roomId);
   });
-
   socket.on("draw_gacha", ({ roomId }) => {
-    const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "playing" || room.deckCount <= 0 || !room.deck || !room.deck.length) {
-      console.warn("[Gacha][Server] draw_gacha rejected", {
-        socketId: socket.id,
-        roomExists: !!room,
-        status: room && room.status,
-        deckCount: room && room.deckCount
-      });
-      return;
-    }
-
-    const playerIndex = room.players.findIndex((p) => p.id === socket.id);
-    if (playerIndex === -1 || playerIndex !== room.currentTurnIndex) {
-      console.warn("[Gacha][Server] draw_gacha rejected because not player's turn", {
-        socketId: socket.id,
-        roomId,
-        playerIndex,
-        currentTurnIndex: room.currentTurnIndex
-      });
-      return;
-    }
-    const player = room.players[playerIndex];
-
-    const drawn = room.deck.shift();
-    room.deckCount = room.deck.length;
-
-    if (!drawn) {
-      room.status = "ended";
-      broadcastGachaState(roomId);
-      return;
-    }
-
+    const room = gachaRooms.get(roomId); if (!room || room.status !== "playing" || room.deckCount <= 0 || !room.deck || !room.deck.length) return;
+    const playerIndex = room.players.findIndex((p) => p.id === socket.id); if (playerIndex === -1 || playerIndex !== room.currentTurnIndex) return;
+    const player = room.players[playerIndex]; const drawn = room.deck.shift(); room.deckCount = room.deck.length;
+    if (!drawn) { room.status = "ended"; broadcastGachaState(roomId); return; }
     const cardId = `gacha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    // การ์ดที่ต้องเลือกเป้าหมาย -> เข้าสถานะ waiting_target ก่อน
     if (drawn.reqTarget) {
-      room.status = "waiting_target";
-      room.pendingCardType = drawn.type;
-      room.pendingCard = {
-        id: cardId,
-        name: drawn.name,
-        emoji: drawn.emoji,
-        desc: "การ์ดใบนี้ต้องเลือกเหยื่อ 1 คนให้รับกรรม...",
-        player: player.name,
-        log: "",
-        type: drawn.type,
-        val: 0
-      };
-      room.lastCard = room.pendingCard;
-
-      console.log("[Gacha][Server] draw_gacha drew target card", {
-        roomId,
-        playerId: player.id,
-        type: drawn.type
-      });
-
-      broadcastGachaState(roomId);
-      return;
+      room.status = "waiting_target"; room.pendingCardType = drawn.type;
+      room.pendingCard = { id: cardId, name: drawn.name, emoji: drawn.emoji, desc: "การ์ดใบนี้ต้องเลือกเหยื่อ 1 คนให้รับกรรม...", player: player.name, log: "", type: drawn.type, val: 0 };
+      room.lastCard = room.pendingCard; broadcastGachaState(roomId); return;
     }
-
-    // การ์ดที่ไม่ต้องเลือกเป้า -> ใช้เอฟเฟกต์ทันที
     const effect = applyGachaEffect(room, player, null, drawn.type);
-
-    const card = {
-      id: cardId,
-      name: drawn.name,
-      emoji: drawn.emoji,
-      desc: effect.desc,
-      player: player.name,
-      log: effect.log,
-      type: drawn.type === "normal_plus" || drawn.type === "normal_minus" ? "normal" : drawn.type,
-      val: effect.val
-    };
-
-    room.lastCard = card;
-    room.history = [card.log, ...room.history].slice(0, 100);
-
-    if (room.deckCount === 0) {
-      room.status = "ended";
-    } else {
-      const nextIndex =
-        room.players.length > 0 ? (playerIndex + 1) % room.players.length : null;
-      room.currentTurnIndex = nextIndex;
-    }
-
-    console.log("[Gacha][Server] draw_gacha -> broadcasting state", {
-      roomId,
-      playerId: player.id,
-      type: card.type,
-      deckCount: room.deckCount,
-      nextTurnIndex: room.currentTurnIndex
-    });
+    const card = { id: cardId, name: drawn.name, emoji: drawn.emoji, desc: effect.desc, player: player.name, log: effect.log, type: drawn.type === "normal_plus" || drawn.type === "normal_minus" ? "normal" : drawn.type, val: effect.val };
+    room.lastCard = card; room.history = [card.log, ...room.history].slice(0, 100);
+    if (room.deckCount === 0) room.status = "ended"; else room.currentTurnIndex = room.players.length > 0 ? (playerIndex + 1) % room.players.length : null;
     broadcastGachaState(roomId);
   });
-
   socket.on("reset_gacha", ({ roomId }) => {
-    const room = gachaRooms.get(roomId);
-    if (!room || room.hostId !== socket.id) return;
-
-    room.status = "waiting";
-    room.currentTurnIndex = null;
-    room.deck = [];
-    room.deckCount = 0;
-    room.lastCard = null;
-    room.pendingCard = null;
-    room.pendingCardType = null;
-    room.history = [];
-
-    console.log("[Gacha][Server] reset_gacha -> broadcasting state", {
-      roomId,
-      players: room.players.length
-    });
+    const room = gachaRooms.get(roomId); if (!room || room.hostId !== socket.id) return;
+    room.status = "waiting"; room.currentTurnIndex = null; room.deck = []; room.deckCount = 0; room.lastCard = null; room.pendingCard = null; room.pendingCardType = null; room.history = [];
     broadcastGachaState(roomId);
   });
-
   socket.on("resolve_gacha_target", ({ roomId, targetId }) => {
-    const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "waiting_target" || room.pendingCardType == null || !room.pendingCard) return;
-
-    const currentIndex = room.currentTurnIndex != null ? room.currentTurnIndex : -1;
-    if (currentIndex === -1) return;
-
-    const sourcePlayer = room.players[currentIndex];
-    if (!sourcePlayer || sourcePlayer.id !== socket.id) return;
-
+    const room = gachaRooms.get(roomId); if (!room || room.status !== "waiting_target" || room.pendingCardType == null || !room.pendingCard) return;
+    const currentIndex = room.currentTurnIndex != null ? room.currentTurnIndex : -1; if (currentIndex === -1) return;
+    const sourcePlayer = room.players[currentIndex]; if (!sourcePlayer || sourcePlayer.id !== socket.id) return;
     let targetPlayer = null;
-    if (targetId === "random") {
-      const candidates = room.players.filter((p) => p.id !== sourcePlayer.id);
-      if (candidates.length > 0) {
-        const idx = Math.floor(Math.random() * candidates.length);
-        targetPlayer = candidates[idx];
-      }
-    } else {
-      targetPlayer = room.players.find((p) => p.id === targetId) || null;
-    }
-
+    if (targetId === "random") { const candidates = room.players.filter((p) => p.id !== sourcePlayer.id); if (candidates.length > 0) { const idx = Math.floor(Math.random() * candidates.length); targetPlayer = candidates[idx]; } } 
+    else { targetPlayer = room.players.find((p) => p.id === targetId) || null; }
     if (!targetPlayer) return;
-
     const effect = applyGachaEffect(room, sourcePlayer, targetPlayer, room.pendingCardType);
-
-    const resolvedCard = {
-      ...room.pendingCard,
-      desc: effect.desc,
-      log: effect.log,
-      type: room.pendingCardType === "normal_plus" || room.pendingCardType === "normal_minus" ? "normal" : room.pendingCardType,
-      val: effect.val
-    };
-
-    room.lastCard = resolvedCard;
-    room.history = [resolvedCard.log, ...room.history].slice(0, 100);
-    room.pendingCard = null;
-    room.pendingCardType = null;
-    room.status = room.deckCount === 0 ? "ended" : "playing";
-
-    if (room.status === "playing") {
-      const nextIndex =
-        room.players.length > 0 ? (currentIndex + 1) % room.players.length : null;
-      room.currentTurnIndex = nextIndex;
-    }
-
-    console.log("[Gacha][Server] resolve_gacha_target -> broadcasting state", {
-      roomId,
-      sourceId: sourcePlayer.id,
-      targetId: targetPlayer.id,
-      type: resolvedCard.type
-    });
-
+    const resolvedCard = { ...room.pendingCard, desc: effect.desc, log: effect.log, type: room.pendingCardType === "normal_plus" || room.pendingCardType === "normal_minus" ? "normal" : room.pendingCardType, val: effect.val };
+    room.lastCard = resolvedCard; room.history = [resolvedCard.log, ...room.history].slice(0, 100); room.pendingCard = null; room.pendingCardType = null; room.status = room.deckCount === 0 ? "ended" : "playing";
+    if (room.status === "playing") room.currentTurnIndex = room.players.length > 0 ? (currentIndex + 1) % room.players.length : null;
     broadcastGachaState(roomId);
   });
 
-  // --- Events: ⚔️ Deck Builder ---
+  // ==========================================
+  // ⚔️ Deck Builder Events
+  // ==========================================
   socket.on("join_deck_room", ({ roomId, username, maxPlayers }) => {
-    if (!roomId) return;
-    const safeName = username ? String(username).trim() : "นักรบไร้นาม";
-    const room = getOrCreateDeckRoom(roomId);
-
-    if (room.players.length === 0) {
-      room.hostId = socket.id;
-      if (maxPlayers) room.maxPlayers = maxPlayers;
-    }
-
+    if (!roomId) return; const safeName = username ? String(username).trim() : "นักรบไร้นาม"; const room = getOrCreateDeckRoom(roomId);
+    if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
     let existingPlayer = room.players.find(p => p.name === safeName);
-    if (existingPlayer) {
-      if (room.hostId === existingPlayer.id) room.hostId = socket.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
-    } else {
+    if (existingPlayer) { if (room.hostId === existingPlayer.id) room.hostId = socket.id; existingPlayer.id = socket.id; existingPlayer.connected = true; } 
+    else {
       if (room.status !== "waiting") return socket.emit("deck_error", { message: "ศึกเริ่มไปแล้ว!" });
       if (room.players.length >= room.maxPlayers) return socket.emit("deck_error", { message: "ปาร์ตี้เต็มแล้ว!" });
-      
-      room.players.push({ id: socket.id, name: safeName, connected: true });
+      room.players.push({ id: socket.id, name: safeName, connected: true, hp: 50, gold: 0, combat: 0, deck: [], hand: [], discard: [], playArea: [] });
     }
-
-    socket.join(`deck_${roomId}`);
-    socket.data.deckRoomId = roomId; // แปะป้ายไว้ตอนเน็ตหลุด
-    broadcastDeckState(roomId);
+    socket.join(`deck_${roomId}`); socket.data.deckRoomId = roomId; broadcastDeckState(roomId);
   });
 
   socket.on("start_deck_game", ({ roomId }) => {
-    const room = deckRooms.get(roomId); 
-// --- ลอจิก: ผู้เล่นลงการ์ดจากมือ ---
-socket.on("play_deck_card", ({ roomId, cardId }) => {
-  const room = deckRooms.get(roomId); 
-  if (!room || room.status !== "playing") return;
-  
-  // เช็คว่าเป็นเทิร์นของตัวเองไหม
-  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
-  const player = room.players[playerIndex];
-  
-  // หาการ์ดในมือ
-  const cardIndex = player.hand.findIndex(c => c.id === cardId); 
-  if (cardIndex === -1) return;
-  const card = player.hand.splice(cardIndex, 1)[0]; // ดึงการ์ดออกจากมือ
-  
-  // 🔥 เช็คระบบ Ally Combo (มีไพ่แฟกชันเดียวกันในโซนเล่นแล้วหรือยัง?)
-  const hasAlly = player.playArea.some(c => c.faction === card.faction && card.faction !== 'starter');
-  
-  // บวกค่าสเตตัสพื้นฐาน (Base Effect)
-  if(card.effect.gold) player.gold += card.effect.gold; 
-  if(card.effect.combat) player.combat += card.effect.combat;
-  if(card.effect.hp) player.hp += card.effect.hp; 
-  if(card.effect.draw) drawDeckCards(player, card.effect.draw);
-  
-  let log = `${player.name} ลงไพ่ [${card.name}]`;
-  
-  // บวกค่าคอมโบ (Ally Effect) ถ้าเงื่อนไขครบ
-  if(hasAlly && card.ally) {
-    if(card.ally.gold) player.gold += card.ally.gold; 
-    if(card.ally.combat) player.combat += card.ally.combat;
-    if(card.ally.hp) player.hp += card.ally.hp; 
-    if(card.ally.draw) drawDeckCards(player, card.ally.draw);
-    log += ` 🔥 (คอมโบ ${card.faction.toUpperCase()} ทำงาน!)`;
-  }
-  
-  // ย้ายการ์ดไปอยู่โซน Play Area (ไพ่ที่เล่นแล้วในเทิร์นนี้)
-  player.playArea.push(card);
-  
-  if(!room.history) room.history = [];
-  room.history.unshift(log); 
-  if(room.history.length > 15) room.history.pop();
-  
-  broadcastDeckState(roomId);
-});
-
-// --- ลอจิก: ซื้อการ์ดจากตลาด ---
-socket.on("buy_deck_card", ({ roomId, cardId }) => {
-  const room = deckRooms.get(roomId); 
-  if (!room || room.status !== "playing") return;
-  
-  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
-  const player = room.players[playerIndex];
-  
-  // หาการ์ดในตลาด
-  const marketIndex = room.market.findIndex(c => c.id === cardId); 
-  if (marketIndex === -1) return;
-  const card = room.market[marketIndex];
-  
-  if (player.gold < card.cost) return; // เงินไม่พอ (กันคนแฮ็กหน้าเว็บมาซื้อ)
-  
-  // หักเงิน แล้วเอาการ์ดเข้ากองทิ้ง (Discard Pile)
-  player.gold -= card.cost; 
-  room.market.splice(marketIndex, 1); 
-  player.discard.push(card);
-  
-  // เติมการ์ดใบใหม่ลงตลาด
-  if(room.marketDeck.length > 0) room.market.push(room.marketDeck.pop()); 
-  
-  if(!room.history) room.history = [];
-  room.history.unshift(`🛒 ${player.name} จ่าย ${card.cost}G ซื้อ [${card.name}]`); 
-  
-  broadcastDeckState(roomId);
-});
-
-// --- ลอจิก: จบเทิร์น & โจมตีศัตรู ---
-socket.on("end_deck_turn", ({ roomId }) => {
-  const room = deckRooms.get(roomId); 
-  if (!room || room.status !== "playing") return;
-  
-  const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-  if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
-  const player = room.players[playerIndex];
-  
-  // โจมตีคนถัดไป (สาดดาเมจ Combat ทั้งหมดใส่ HP ศัตรู)
-  if (player.combat > 0 && room.players.length > 1) {
-    const targetIndex = (playerIndex + 1) % room.players.length;
-    const target = room.players[targetIndex];
-    target.hp -= player.combat;
-    
-    if(!room.history) room.history = [];
-    room.history.unshift(`⚔️ ${player.name} สาด ${player.combat} ดาเมจใส่ ${target.name}!`);
-    
-    // เช็คว่าศัตรูตายไหม
-    if (target.hp <= 0) { 
-      target.hp = 0; 
-      room.status = "ended"; 
-      room.history.unshift(`🏆 ${player.name} เป็นผู้ชนะ!`); 
-      broadcastDeckState(roomId); 
-      return; 
-    }
-  }
-  
-  // รีเซ็ตค่าพลังในเทิร์น
-  player.gold = 0; 
-  player.combat = 0;
-  
-  // กวาดไพ่บนมือและที่เล่นแล้วลงกองทิ้งทั้งหมด
-  player.discard.push(...player.hand, ...(player.playArea || []));
-  player.hand = []; 
-  player.playArea = [];
-  
-  // จั่วไพ่ใหม่ 5 ใบเตรียมไว้เทิร์นหน้า
-  drawDeckCards(player, 5);
-  
-  // เปลี่ยนเทิร์น
-  room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length; 
-  
-  if(!room.history) room.history = [];
-  room.history.unshift(`⏳ จบเทิร์นของ ${player.name}`);
-  
-  broadcastDeckState(roomId);
-});
-
-// ลอจิก: รีเซ็ตเกมเพื่อเล่นใหม่
-socket.on("reset_deck_game", ({ roomId }) => {
-  const room = deckRooms.get(roomId); 
-  if (!room || room.hostId !== socket.id) return;
-  room.status = "waiting"; 
-  room.market = []; 
-  room.marketDeck = []; 
-  room.history = [];
-  room.players.forEach(p => { 
-      p.hp = 50; p.gold = 0; p.combat = 0; p.deck = []; p.hand = []; p.discard = []; p.playArea = []; 
-  });
-  broadcastDeckState(roomId);
-});
-
-    // เช็คสิทธิ์: ต้องเป็นหัวหน้าห้อง และห้องต้องอยู่ในสถานะรอ
-    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
-    
-    // ตั้งโต๊ะ
-    room.marketDeck = createDeckMarket(); 
-    room.market = room.marketDeck.splice(0, 5); // เปิดตลาด 5 ใบ
-    room.status = "playing"; 
-    room.currentTurnIndex = 0; 
-    
-    // แจกสเตตัสและไพ่เริ่มต้นให้ทุกคน
-    room.players.forEach(p => { 
-      p.hp = 50; p.gold = 0; p.combat = 0; 
-      p.deck = shuffleDeck(getStartingDeck()); 
-      p.hand = []; p.discard = []; p.playArea = []; 
-      drawDeckCards(p, 5); // จั่วไพ่ขึ้นมือ 5 ใบ
-    });
-    
+    const room = deckRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
+    room.marketDeck = createDeckMarket(); room.market = room.marketDeck.splice(0, 5); room.status = "playing"; room.currentTurnIndex = 0; room.history = ["⚔️ เริ่มศึกตะลุมบอน!"];
+    room.players.forEach(p => { p.hp = 50; p.gold = 0; p.combat = 0; p.deck = shuffleDeck(getStartingDeck()); p.hand = []; p.discard = []; p.playArea = []; drawDeckCards(p, 5); });
     broadcastDeckState(roomId);
   });
 
-  // --- Disconnect Handler สำหรับทุกเกม (แก้บั๊กห้องผีสิง) ---
+  socket.on("play_deck_card", ({ roomId, cardId }) => {
+    const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
+    const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+    const player = room.players[playerIndex]; const cardIndex = player.hand.findIndex(c => c.id === cardId); if (cardIndex === -1) return;
+    const card = player.hand.splice(cardIndex, 1)[0];
+    const hasAlly = player.playArea.some(c => c.faction === card.faction && card.faction !== 'starter');
+    
+    if(card.effect.gold) player.gold += card.effect.gold; if(card.effect.combat) player.combat += card.effect.combat;
+    if(card.effect.hp) player.hp += card.effect.hp; if(card.effect.draw) drawDeckCards(player, card.effect.draw);
+    
+    let log = `${player.name} ลงไพ่ [${card.name}]`;
+    if(hasAlly && card.ally) {
+      if(card.ally.gold) player.gold += card.ally.gold; if(card.ally.combat) player.combat += card.ally.combat;
+      if(card.ally.hp) player.hp += card.ally.hp; if(card.ally.draw) drawDeckCards(player, card.ally.draw);
+      log += ` 🔥 (คอมโบ ${card.faction.toUpperCase()} ทำงาน!)`;
+    }
+    
+    player.playArea.push(card);
+    if(!room.history) room.history = []; room.history.unshift(log); if(room.history.length > 15) room.history.pop();
+    broadcastDeckState(roomId);
+  });
+
+  socket.on("buy_deck_card", ({ roomId, cardId }) => {
+    const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
+    const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+    const player = room.players[playerIndex]; const marketIndex = room.market.findIndex(c => c.id === cardId); if (marketIndex === -1) return;
+    const card = room.market[marketIndex];
+    if (player.gold < card.cost) return; 
+    
+    player.gold -= card.cost; room.market.splice(marketIndex, 1); player.discard.push(card);
+    if(room.marketDeck.length > 0) room.market.push(room.marketDeck.pop()); 
+    if(!room.history) room.history = []; room.history.unshift(`🛒 ${player.name} ซื้อ [${card.name}]`); 
+    broadcastDeckState(roomId);
+  });
+
+  socket.on("end_deck_turn", ({ roomId }) => {
+    const room = deckRooms.get(roomId); if (!room || room.status !== "playing") return;
+    const playerIndex = room.players.findIndex(p => p.id === socket.id); if (playerIndex === -1 || room.currentTurnIndex !== playerIndex) return;
+    const player = room.players[playerIndex];
+    
+    if (player.combat > 0 && room.players.length > 1) {
+      const targetIndex = (playerIndex + 1) % room.players.length; const target = room.players[targetIndex]; target.hp -= player.combat;
+      if(!room.history) room.history = []; room.history.unshift(`⚔️ ${player.name} สาด ${player.combat} ดาเมจใส่ ${target.name}!`);
+      if (target.hp <= 0) { target.hp = 0; room.status = "ended"; room.history.unshift(`🏆 ${player.name} เป็นผู้ชนะ!`); broadcastDeckState(roomId); return; }
+    }
+    
+    player.gold = 0; player.combat = 0; player.discard.push(...player.hand, ...(player.playArea || [])); player.hand = []; player.playArea = [];
+    drawDeckCards(player, 5); room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.length; 
+    if(!room.history) room.history = []; room.history.unshift(`⏳ จบเทิร์นของ ${player.name}`);
+    broadcastDeckState(roomId);
+  });
+
+  socket.on("reset_deck_game", ({ roomId }) => {
+    const room = deckRooms.get(roomId); if (!room || room.hostId !== socket.id) return;
+    room.status = "waiting"; room.market = []; room.marketDeck = []; room.history = [];
+    room.players.forEach(p => { p.hp = 50; p.gold = 0; p.combat = 0; p.deck = []; p.hand = []; p.discard = []; p.playArea = []; });
+    broadcastDeckState(roomId);
+  });
+
+  // --- Disconnect Handler (ป้องกันห้องผีสิงครบทุกเกม) ---
   socket.on("disconnect", () => {
-    // 1. จัดการ SomomKang
-    const roomId = socket.data.roomId; 
-    if (roomId) { 
-      const room = rooms.get(roomId); 
-      if (room) { 
-        const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-        if (playerIndex !== -1) { 
-          if (room.status === "waiting") room.players.splice(playerIndex, 1); 
-          else room.players[playerIndex].connected = false; 
-        } 
-        if (room.hostId === socket.id) { 
-          const nextHost = room.players.find(p => p.connected); 
-          room.hostId = nextHost ? nextHost.id : null; 
-        } 
-        // 🔥 เช็คตรงนี้: ถ้าไม่มีใครออนไลน์เลย = ลบห้องทิ้ง!
-        if (!room.players.some(p => p.connected)) {
-          rooms.delete(roomId); 
-        } else {
-          broadcastState(roomId); 
-        }
-      } 
-    }
-    
-    // 2. จัดการ Yamstory
-    const yamRoomId = socket.data.yamRoomId; 
-    if (yamRoomId) { 
-      const room = yamRooms.get(yamRoomId); 
-      if (room) { 
-        const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-        if (playerIndex !== -1) { 
-          if (room.status === "waiting") room.players.splice(playerIndex, 1); 
-          else room.players[playerIndex].connected = false; 
-        } 
-        if (room.hostId === socket.id) { 
-          const nextHost = room.players.find(p => p.connected); 
-          room.hostId = nextHost ? nextHost.id : null; 
-        } 
-        if (!room.players.some(p => p.connected)) yamRooms.delete(yamRoomId); 
-        else broadcastYamState(yamRoomId); 
-      } 
-    }
-    
-    // 3. จัดการ Drunk Racing
-    const racingRoomId = socket.data.racingRoomId; 
-    if (racingRoomId) { 
-      const room = racingRooms.get(racingRoomId); 
-      if (room) { 
-        const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-        if (playerIndex !== -1) { 
-          if (room.status === "waiting") room.players.splice(playerIndex, 1); 
-          else room.players[playerIndex].connected = false; 
-        } 
-        if (room.hostId === socket.id) { 
-          const nextHost = room.players.find(p => p.connected); 
-          room.hostId = nextHost ? nextHost.id : null; 
-        } 
-        if (!room.players.some(p => p.connected)) { 
-          if(room.raceInterval) clearInterval(room.raceInterval); 
-          racingRooms.delete(racingRoomId); 
-        } 
-        else broadcastRacingState(racingRoomId); 
-      } 
-    }
-    
-    // 4. จัดการ Gacha Hell
-    const gachaRoomId = socket.data.gachaRoomId; 
-    if (gachaRoomId) { 
-      const room = gachaRooms.get(gachaRoomId); 
-      if (room) { 
-        const playerIndex = room.players.findIndex(p => p.id === socket.id); 
-        if (playerIndex !== -1) { 
-          if (room.status === "waiting") room.players.splice(playerIndex, 1); 
-          else room.players[playerIndex].connected = false; 
-        } 
-        if (room.hostId === socket.id) { 
-          const nextHost = room.players.find(p => p.connected); 
-          room.hostId = nextHost ? nextHost.id : null; 
-        } 
-        if (!room.players.some(p => p.connected)) gachaRooms.delete(gachaRoomId); 
-        else broadcastGachaState(gachaRoomId); 
-      } 
-    }
-
-    // จัดการ Deck Builder หลุด
-    const deckRoomId = socket.data.deckRoomId;
-    if (deckRoomId) {
-      const room = deckRooms.get(deckRoomId);
-      if (room) {
-        const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex !== -1) {
-          if (room.status === "waiting") room.players.splice(playerIndex, 1);
-          else room.players[playerIndex].connected = false;
-        }
-        if (room.hostId === socket.id) {
-          const nextHost = room.players.find(p => p.connected);
-          room.hostId = nextHost ? nextHost.id : null;
-        }
-        if (!room.players.some(p => p.connected)) deckRooms.delete(deckRoomId);
-        else broadcastDeckState(deckRoomId);
-      }
-    }
-  }); // อันนี้คือปิดของ socket.on("disconnect")
-
-}); // 🔥 พี่บอมต้องมีบรรทัดนี้ครับ (เติมเข้าไปเลย) เพื่อปิด io.on("connection")
+    const sId = socket.id;
+    // 1. SomomKang
+    if (socket.data.roomId) { const room = rooms.get(socket.data.roomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) rooms.delete(socket.data.roomId); else broadcastState(socket.data.roomId); } }
+    // 2. Yamstory
+    if (socket.data.yamRoomId) { const room = yamRooms.get(socket.data.yamRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) yamRooms.delete(socket.data.yamRoomId); else broadcastYamState(socket.data.yamRoomId); } }
+    // 3. Drunk Racing
+    if (socket.data.racingRoomId) { const room = racingRooms.get(socket.data.racingRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) { if(room.raceInterval) clearInterval(room.raceInterval); racingRooms.delete(socket.data.racingRoomId); } else broadcastRacingState(socket.data.racingRoomId); } }
+    // 4. Gacha Hell
+    if (socket.data.gachaRoomId) { const room = gachaRooms.get(socket.data.gachaRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) gachaRooms.delete(socket.data.gachaRoomId); else broadcastGachaState(socket.data.gachaRoomId); } }
+    // 5. Deck Builder
+    if (socket.data.deckRoomId) { const room = deckRooms.get(socket.data.deckRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) deckRooms.delete(socket.data.deckRoomId); else broadcastDeckState(socket.data.deckRoomId); } }
+  });
+});
 
 httpServer.listen(PORT, () => { console.log(`Server is running on port ${PORT}`); });
