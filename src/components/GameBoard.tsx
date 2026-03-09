@@ -9,6 +9,11 @@ interface Card { id: string; suit: string; rank: string; }
 interface Player { id: string; name: string; handCount: number; connected: boolean; chips: number; roundChipsChange?: number; hand?: Card[]; points?: number; }
 interface GameState { roomId: string; hostId: string; maxPlayers: number; status: "waiting" | "playing" | "ended"; currentTurnPlayerId: string | null; drawPileCount: number; discardTop: Card | null; winnerId: string | null; instantWinType: string | null; endGameReason: string | null; players: Player[]; endedGameData?: any; }
 
+// 🎵 ลิงก์เสียง Effect (เปลี่ยนได้ตามใจชอบเลยครับลูกพี่!)
+const SFX_SELECT = "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3"; // เสียงจิ้มไพ่
+const SFX_PLAY = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // เสียงฟึ่บ! ทิ้งไพ่
+const SFX_KANG = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3"; // เสียงกดแคง
+
 export default function GameBoard({ roomId, username }: { roomId: string; username: string }) {
   const router = useRouter();
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -17,12 +22,20 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [flowData, setFlowData] = useState<{ rank: string; fromPlayerId: string } | null>(null);
   
-  // ✨ ความเกรียนที่เพิ่มเข้ามา
   const [gotFlowed, setGotFlowed] = useState(false);
   const [recentFlowPlayerId, setRecentFlowPlayerId] = useState<string | null>(null);
 
   const [isMuted, setIsMuted] = useState(true);
   const bgmRef = useRef<HTMLAudioElement>(null);
+
+  // 🔊 ฟังก์ชันเล่นเสียง SFX
+  const playSound = (url: string) => {
+    if (!isMuted) {
+      const audio = new Audio(url);
+      audio.volume = 0.7; // ปรับความดังเอฟเฟกต์ 70%
+      audio.play().catch(() => console.log("ติดบั๊กเล่นเสียงไม่ได้"));
+    }
+  };
 
   useEffect(() => {
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
@@ -43,16 +56,14 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     s.on("flow_available", (data) => setFlowData(data));
     s.on("error_message", (msg) => { alert(msg.message); router.push("/"); });
 
-    // 💥 รับสัญญาณ: โดนเยาะเย้ย (สำหรับเหยื่อ)
     s.on("got_flowed_mock", () => {
       setGotFlowed(true);
-      setTimeout(() => setGotFlowed(false), 3000); // เด้งโชว์ 3 วินาทีแล้วหายไป
+      setTimeout(() => setGotFlowed(false), 3000);
     });
 
-    // 🌊 รับสัญญาณ: โชว์ป้ายคนไหล
     s.on("player_flowed", ({ playerId }) => {
       setRecentFlowPlayerId(playerId);
-      setTimeout(() => setRecentFlowPlayerId(null), 3000); // โชว์ป้าย 3 วินาที
+      setTimeout(() => setRecentFlowPlayerId(null), 3000);
     });
 
     return () => { s.disconnect(); };
@@ -72,20 +83,34 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   const opponents = gameState.players.filter(p => p.id !== socket.id);
   const me = gameState.players.find(p => p.id === socket.id);
 
-  // 🛡️ เช็คว่ามีไพ่เลขตรงกับที่ไหลได้ไหม (ถ้าไม่มีก็ซ่อนปุ่ม)
   const canFlow = flowData && myHand.some(card => card.rank === flowData.rank);
 
-  const toggleCard = (id: string) => setSelectedCardIds(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+  // 👆 ตอนจิ้มเลือกไพ่
+  const toggleCard = (id: string) => {
+    playSound(SFX_SELECT); // 🎵 เล่นเสียงเลือกไพ่
+    setSelectedCardIds(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+  };
 
+  // 👇 ตอนจั่วและทิ้งไพ่
   const handleDrawDiscard = () => {
     if (!isMyTurn || selectedCardIds.length === 0) return;
+    playSound(SFX_PLAY); // 🎵 เล่นเสียงสไลด์ไพ่ลงโต๊ะ
     socket.emit("draw_and_discard", { roomId, discardCardIds: selectedCardIds });
     setSelectedCardIds([]); setFlowData(null);
   };
 
-  const handleKang = () => { if (isMyTurn) socket.emit("kang", { roomId }); };
+  // 💥 ตอนกดแคง
+  const handleKang = () => { 
+    if (isMyTurn) {
+      playSound(SFX_KANG); // 🎵 เล่นเสียงประกาศแคง
+      socket.emit("kang", { roomId }); 
+    }
+  };
+
+  // 🌊 ตอนไหลไพ่
   const handleFlow = () => {
     if (!flowData || selectedCardIds.length === 0) return;
+    playSound(SFX_PLAY); // 🎵 เล่นเสียงสไลด์ไพ่ลงโต๊ะแบบดุดัน
     socket.emit("flow_discard", { roomId, cardIds: selectedCardIds });
     setSelectedCardIds([]); setFlowData(null);
   };
@@ -109,7 +134,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   return (
     <div className="min-h-dvh bg-gradient-to-br from-green-950 via-green-900 to-black text-white font-sans overflow-hidden flex flex-col relative">
       
-      {/* 💥 เอฟเฟกต์ "โดนไปดิ!" ตอนเราโดนไหล */}
       <AnimatePresence>
         {gotFlowed && (
           <motion.div 
@@ -147,7 +171,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
         </div>
       </header>
 
-      {/* หน้าจอรอก่อนเริ่มเกม */}
       {gameState.status === "waiting" && (
         <div className="flex-1 flex flex-col items-center justify-center z-10 p-4">
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-black/70 border-2 border-gold/50 rounded-3xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(250,204,21,0.15)] backdrop-blur-xl">
@@ -184,16 +207,13 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
         </div>
       )}
 
-      {/* หน้าจอตอนกำลังเล่น */}
       {gameState.status === "playing" && (
         <div className="flex-1 flex flex-col justify-between p-4 z-10 relative">
           
-          {/* คู่แข่ง */}
           <div className="flex justify-center gap-6 sm:gap-12 mt-4 relative">
             {opponents.map((p) => (
               <div key={p.id} className={`flex flex-col items-center transition-all duration-300 ${gameState.currentTurnPlayerId === p.id ? "scale-110 drop-shadow-[0_0_20px_gold]" : "opacity-80"} relative`}>
                 
-                {/* 🌊 ป้ายประจานคนไหล (คู่แข่ง) */}
                 <AnimatePresence>
                   {recentFlowPlayerId === p.id && (
                     <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: -20, opacity: 1 }} exit={{ opacity: 0 }} className="absolute -top-10 z-50 bg-purple-600 text-white px-4 py-1 rounded-full font-black text-sm border-2 border-white shadow-[0_0_15px_purple] animate-bounce whitespace-nowrap">
@@ -205,7 +225,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                 <div className={`px-4 py-1 rounded-full text-sm font-bold mb-3 border ${gameState.currentTurnPlayerId === p.id ? "bg-gold text-black border-yellow-300 shadow-[0_0_15px_gold]" : "bg-black/60 text-white border-white/20"} flex items-center gap-2`}>
                   {p.name} <span className={gameState.currentTurnPlayerId === p.id ? "text-black" : "text-gold"}>💰{p.chips}</span>
                 </div>
-                {/* หลังไพ่ศัตรู */}
                 <div className="w-16 h-24 sm:w-20 sm:h-28 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold/50 shadow-2xl flex items-center justify-center relative">
                   <div className="w-12 h-20 border border-gold/30 rounded-lg"></div>
                   <div className="absolute -bottom-3 -right-3 bg-black text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-black border-2 border-gold shadow-lg">
@@ -216,7 +235,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             ))}
           </div>
 
-          {/* กลางโต๊ะ */}
           <div className="flex justify-center items-center gap-10 my-8">
             <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center cursor-pointer">
               <div className="w-20 h-28 sm:w-28 sm:h-40 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-2xl border-2 border-gold shadow-[0_0_30px_rgba(0,0,0,0.8)] flex items-center justify-center relative">
@@ -240,10 +258,8 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             </div>
           </div>
 
-          {/* ไพ่ในมือเรา */}
           <div className="flex flex-col items-center gap-6 mb-4 relative">
             
-            {/* 🌊 ป้ายประจานคนไหล (ตัวเราเอง) */}
             <AnimatePresence>
               {recentFlowPlayerId === socket.id && (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ opacity: 0 }} className="absolute -top-32 z-50 bg-purple-600 text-white px-8 py-2 rounded-full font-black text-xl border-2 border-white shadow-[0_0_30px_purple] animate-bounce">
@@ -270,7 +286,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
               ))}
             </div>
 
-            {/* ปุ่ม Action */}
             <AnimatePresence>
               {isMyTurn && (
                 <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex flex-wrap justify-center gap-4 w-full px-4 mt-2">
@@ -280,7 +295,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                   <button onClick={handleKang} className="min-w-[140px] bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 text-white font-black py-4 px-8 rounded-2xl shadow-[0_10px_0_#7f1d1d] hover:-translate-y-1 hover:shadow-[0_10px_20px_rgba(239,68,68,0.5)] transition-all text-lg border border-red-400">
                     ประกาศ "แคง!"
                   </button>
-                  {/* 🛡️ ปุ่มไหลจะโผล่ก็ต่อเมื่อเรามีไพ่ตรงกับที่ไหลได้เท่านั้น! */}
                   {canFlow && (
                     <button onClick={handleFlow} disabled={selectedCardIds.length === 0} className="min-w-[140px] bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 hover:to-purple-600 disabled:from-gray-700 disabled:to-gray-900 text-white font-black py-4 px-8 rounded-2xl shadow-[0_10px_0_#4c1d95] hover:-translate-y-1 transition-all text-lg animate-pulse border border-purple-300">
                       ไหลไพ่ ({flowData!.rank})
@@ -293,7 +307,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
         </div>
       )}
 
-      {/* หน้าจอสรุปผล */}
       {gameState.status === "ended" && gameState.endedGameData && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overflow-y-auto">
           <motion.div initial={{ scale: 0.8, opacity: 0, rotateX: 20 }} animate={{ scale: 1, opacity: 1, rotateX: 0 }} className="bg-gradient-to-b from-gray-900 to-black border-4 border-gold rounded-3xl p-6 sm:p-10 max-w-3xl w-full shadow-[0_0_80px_rgba(250,204,21,0.4)] my-auto relative overflow-hidden">
