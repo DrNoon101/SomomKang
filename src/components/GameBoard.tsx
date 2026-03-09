@@ -9,9 +9,12 @@ interface Card { id: string; suit: string; rank: string; }
 interface Player { id: string; name: string; handCount: number; connected: boolean; chips: number; roundChipsChange?: number; hand?: Card[]; points?: number; }
 interface GameState { roomId: string; hostId: string; maxPlayers: number; status: "waiting" | "playing" | "ended"; currentTurnPlayerId: string | null; drawPileCount: number; discardTop: Card | null; winnerId: string | null; instantWinType: string | null; endGameReason: string | null; players: Player[]; endedGameData?: any; }
 
-const SFX_SELECT = "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3";
-const SFX_PLAY = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3";
-const SFX_KANG = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3";
+// 🎵 ลิงก์เสียง Effect ทั้งหมด
+const SFX_SELECT = "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3"; 
+const SFX_PLAY = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; 
+const SFX_KANG = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3"; 
+const SFX_GOT_FLOWED = "https://assets.mixkit.co/active_storage/sfx/274/274-preview.mp3"; // 💥 เสียงโดนกระแทกตอนโดนไหล
+const SFX_GAME_END = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"; // 🏆 เสียง Fanfare จบเกม
 
 export default function GameBoard({ roomId, username }: { roomId: string; username: string }) {
   const router = useRouter();
@@ -24,11 +27,18 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   const [gotFlowed, setGotFlowed] = useState(false);
   const [recentFlowPlayerId, setRecentFlowPlayerId] = useState<string | null>(null);
 
+  // 🔊 ระบบควบคุมเสียงที่ฉลาดขึ้น
   const [isMuted, setIsMuted] = useState(true);
+  const isMutedRef = useRef(isMuted); // ใช้ Ref ช่วยจำสถานะ Mute ให้ทำงานได้เรียลไทม์
   const bgmRef = useRef<HTMLAudioElement>(null);
+  const prevStatusRef = useRef<string | null>(null);
 
+  // อัปเดต Ref ทุกครั้งที่กดเปิด/ปิดเสียง
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+
+  // ฟังก์ชันเล่นเสียง SFX
   const playSound = (url: string) => {
-    if (!isMuted) {
+    if (!isMutedRef.current) {
       const audio = new Audio(url);
       audio.volume = 0.7;
       audio.play().catch(() => {});
@@ -54,7 +64,9 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     s.on("flow_available", (data) => setFlowData(data));
     s.on("error_message", (msg) => { alert(msg.message); router.push("/"); });
 
+    // 💥 เมื่อโดนไหล (เยาะเย้ย)
     s.on("got_flowed_mock", () => {
+      playSound(SFX_GOT_FLOWED); // เล่นเสียงกระแทก!
       setGotFlowed(true);
       setTimeout(() => setGotFlowed(false), 3000);
     });
@@ -67,12 +79,26 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     return () => { s.disconnect(); };
   }, [roomId, username, router]);
 
+  // 🎵 จัดการเสียง BGM และ เสียงจบเกม
   useEffect(() => {
     if (bgmRef.current) {
-      if (isMuted) bgmRef.current.pause();
-      else bgmRef.current.play().catch(() => setIsMuted(true));
+      // ถ้าปิดเสียงอยู่ หรือ เกมจบแล้ว -> ปิด BGM
+      if (isMuted || gameState?.status === "ended") {
+        bgmRef.current.pause();
+      } else {
+        // ถ้าเล่นอยู่ ให้เปิด BGM
+        bgmRef.current.play().catch(() => setIsMuted(true));
+      }
     }
-  }, [isMuted]);
+
+    // 🏆 เช็คว่าเกมเพิ่งตัดจบใช่ไหม (เล่นเสียง Fanfare)
+    if (gameState?.status) {
+      if (gameState.status === "ended" && prevStatusRef.current !== "ended") {
+        playSound(SFX_GAME_END); // เล่นเสียงจบเกม!
+      }
+      prevStatusRef.current = gameState.status;
+    }
+  }, [isMuted, gameState?.status]);
 
   if (!gameState || !socket) return null;
 
@@ -109,7 +135,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     setSelectedCardIds([]); setFlowData(null);
   };
 
-  // 🃏 ย่อขนาดไพ่ลงให้เล็กลงพอดีโต๊ะ
   const renderCard = (card: Card, isSelected: boolean, onClick?: () => void) => {
     const isRed = card.suit === "hearts" || card.suit === "diamonds";
     const suitSymbol = { hearts: "♥", diamonds: "♦", spades: "♠", clubs: "♣" }[card.suit];
@@ -147,7 +172,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
 
       <audio ref={bgmRef} src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" loop />
       
-      {/* ✨ คืนชีพพื้นหลังเคลื่อนไหว (สัญลักษณ์ไพ่ลอยได้) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <motion.div animate={{ y: [0, -30, 0], rotate: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }} className="absolute top-20 left-10 text-9xl text-gold opacity-10 blur-[2px]">♠</motion.div>
         <motion.div animate={{ y: [0, 30, 0], rotate: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }} className="absolute bottom-40 right-10 text-9xl text-red-500 opacity-10 blur-[2px]">♥</motion.div>
@@ -228,7 +252,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                 <div className={`px-3 py-1 rounded-full text-xs sm:text-sm font-bold mb-2 border ${gameState.currentTurnPlayerId === p.id ? "bg-gold text-black border-yellow-300 shadow-[0_0_15px_gold]" : "bg-black/60 text-white border-white/20"} flex items-center gap-2`}>
                   {p.name} <span className={gameState.currentTurnPlayerId === p.id ? "text-black" : "text-gold"}>💰{p.chips}</span>
                 </div>
-                {/* 🃏 ย่อขนาดหลังไพ่คู่แข่งด้วย */}
                 <div className="w-12 h-16 sm:w-16 sm:h-24 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold/50 shadow-xl flex items-center justify-center relative">
                   <div className="w-8 h-12 sm:w-10 sm:h-16 border border-gold/30 rounded-lg"></div>
                   <div className="absolute -bottom-2 -right-2 bg-black text-white w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-black border-2 border-gold shadow-lg">
@@ -241,7 +264,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
 
           <div className="flex justify-center items-center gap-6 sm:gap-10 my-4 sm:my-8">
             <motion.div whileHover={{ scale: 1.05 }} className="flex flex-col items-center cursor-pointer">
-              {/* 🃏 ย่อขนาดกองจั่ว */}
               <div className="w-16 h-24 sm:w-20 sm:h-32 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold shadow-[0_0_20px_rgba(0,0,0,0.8)] flex items-center justify-center relative">
                 <div className="w-12 h-20 sm:w-14 sm:h-24 border border-gold/30 rounded-lg flex items-center justify-center text-gold opacity-50 text-2xl sm:text-3xl">🂠</div>
                 <div className="absolute -top-3 -right-3 bg-gold text-black px-2 py-1 rounded-full text-xs font-black border-2 border-black shadow-lg">
@@ -252,7 +274,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             </motion.div>
 
             <div className="flex flex-col items-center">
-              {/* 🃏 ย่อขนาดกองทิ้ง */}
               {gameState.discardTop ? (
                 renderCard(gameState.discardTop, false)
               ) : (
