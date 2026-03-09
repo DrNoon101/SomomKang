@@ -32,25 +32,25 @@ function createDeckMarket() {
     for(let i=0; i<3; i++) deck.push({ id: `db_${id++}`, faction, name, emoji, cost, effect, ally }); 
   };
   
-  // 🔥 Somom (เพิ่มสกิลบังคับศัตรูทิ้งไพ่ - discardEnemy)
+  // 🔴 Somom (บ้าพลัง & สังเวย)
   add('somom', 'หมัดสมม', '🔥', 2, { combat: 3 }, { combat: 2 });
-  add('somom', 'ดาบคลั่ง', '🗡️', 4, { combat: 5 }, { draw: 1 });
-  add('somom', 'คำรามกรรโชก', '🗣️', 5, { combat: 3, discardEnemy: 1 }, { combat: 3 }); // บังคับทิ้งไพ่ 1 ใบ!
-  
-  // 👼 The Angles (สายฮีลเหมือนเดิม)
+  add('somom', 'คำรามกรรโชก', '🗣️', 5, { combat: 3, discardEnemy: 1 }, { combat: 3 }); 
+  add('somom', 'พิธีกรรมสีเลือด', '🩸', 4, { discardSelf: 1, combat: 6 }, { draw: 1 }); // สังเวยไพ่ตัวเอง 1 ใบ แลกดาเมจหนัก!
+
+  // 🟡 The Angles (ยื้อชีวิต & สเกลตามจำนวนไพ่)
   add('angles', 'แสงเยียวยา', '👼', 2, { hp: 3 }, { combat: 2 });
   add('angles', 'โล่สวรรค์', '🛡️', 4, { hp: 4, combat: 2 }, { hp: 2 });
-  add('angles', 'พรศักดิ์สิทธิ์', '✨', 5, { hp: 5, draw: 1 }, { combat: 2 });
+  add('angles', 'ทัพสวรรค์', '✨', 5, { hp: 2, scaleAnglesHp: true }, { combat: 3 }); // ฮีลทวีคูณตามไพ่ Angles บนโต๊ะ!
   
-  // 🎷 The Musician (จั่วไพ่รัวๆ)
+  // 🔵 The Musician (จังหวะ & ลำดับต่อเนื่อง)
   add('musician', 'จังหวะแจ๊ส', '🎷', 2, { gold: 1, draw: 1 }, { combat: 1 });
   add('musician', 'โซโล่กีตาร์', '🎸', 3, { combat: 2, draw: 1 }, { gold: 1 });
-  add('musician', 'วงออร์เคสตรา', '🎺', 5, { draw: 2 }, { combat: 2 });
+  add('musician', 'เครสเชนโด', '📈', 4, { scalePlayAreaCombat: true }, { draw: 1 }); // ดาเมจทวีคูณตามจำนวนไพ่ที่ลงไปแล้ว!
   
-  // 🌹 Cassanova (เพิ่มสกิลขโมยเงิน - steal)
+  // 💖 Cassanova (สายเปย์ & ดูดเลือด)
   add('cassanova', 'โปรยเสน่ห์', '🌹', 2, { gold: 2 }, { hp: 2 });
-  add('cassanova', 'เปย์ไม่อั้น', '💸', 4, { gold: 3 }, { combat: 2 });
-  add('cassanova', 'จูบมรณะ', '💋', 4, { steal: 2, combat: 1 }, { draw: 1 }); // ขโมยเงิน 2G!
+  add('cassanova', 'จูบมรณะ', '💋', 4, { steal: 2, combat: 1 }, { draw: 1 }); 
+  add('cassanova', 'เสน่ห์แวมไพร์', '🦇', 5, { stealHp: 2, gold: 1 }, { steal: 1 }); // ดูดเลือด (HP) ศัตรูมาเป็นของเรา!
 
   return shuffleDeck(deck);
 }
@@ -499,47 +499,58 @@ io.on("connection", (socket) => {
     
     let log = `${player.name} ลงไพ่ [${card.name}]`;
 
-    // ฟังก์ชันประมวลผลเอฟเฟกต์ (รวมขโมยเงิน และ บังคับทิ้งไพ่)
+    // ฟังก์ชันประมวลผลเอฟเฟกต์ 
     const applyEffects = (eff) => {
       if(eff.gold) player.gold += eff.gold; 
       if(eff.combat) player.combat += eff.combat;
       if(eff.hp) player.hp += eff.hp; 
       if(eff.draw) drawDeckCards(player, eff.draw);
       
-      // 😈 ระบบขโมยเงิน (Steal)
+      // 😈 ขโมยเงิน
       if(eff.steal && room.players.length > 1) {
-        const targetIndex = (playerIndex + 1) % room.players.length;
-        const target = room.players[targetIndex];
-        const stolenAmount = Math.min(target.gold, eff.steal);
-        target.gold -= stolenAmount;
-        player.gold += stolenAmount;
+        const targetIndex = (playerIndex + 1) % room.players.length; const target = room.players[targetIndex];
+        const stolenAmount = Math.min(target.gold, eff.steal); target.gold -= stolenAmount; player.gold += stolenAmount;
         if(stolenAmount > 0) log += ` (ขโมยมา ${stolenAmount}G!)`;
       }
 
-      // 🗑️ ระบบบังคับศัตรูทิ้งไพ่ (Discard Enemy)
+      // 🗑️ บังคับศัตรูทิ้งไพ่
       if(eff.discardEnemy && room.players.length > 1) {
-        const targetIndex = (playerIndex + 1) % room.players.length;
-        const target = room.players[targetIndex];
+        const targetIndex = (playerIndex + 1) % room.players.length; const target = room.players[targetIndex];
         let droppedCount = 0;
-        for(let i=0; i<eff.discardEnemy; i++) {
-          if(target.hand.length > 0) {
-            const rIdx = Math.floor(Math.random() * target.hand.length); // สุ่มทิ้งจากมือ
-            target.discard.push(target.hand.splice(rIdx, 1)[0]);
-            droppedCount++;
-          }
-        }
+        for(let i=0; i<eff.discardEnemy; i++) { if(target.hand.length > 0) { const rIdx = Math.floor(Math.random() * target.hand.length); target.discard.push(target.hand.splice(rIdx, 1)[0]); droppedCount++; } }
         if(droppedCount > 0) log += ` (ศัตรูถูกบังคับทิ้งไพ่ ${droppedCount} ใบ!)`;
+      }
+
+      // 🩸 สังเวย: บังคับทิ้งไพ่บนมือตัวเอง
+      if(eff.discardSelf && player.hand.length > 0) {
+        let droppedCount = 0;
+        for(let i=0; i<eff.discardSelf; i++) { if(player.hand.length > 0) { const rIdx = Math.floor(Math.random() * player.hand.length); player.discard.push(player.hand.splice(rIdx, 1)[0]); droppedCount++; } }
+        if(droppedCount > 0) log += ` (สังเวยไพ่ในมือไป ${droppedCount} ใบ!)`;
+      }
+
+      // ✨ ทัพสวรรค์: สเกลฮีลตามไพ่ Angles บนโต๊ะ
+      if(eff.scaleAnglesHp) {
+        const anglesCount = player.playArea.filter(c => c.faction === 'angles').length + 1; // นับตัวเองด้วย
+        const bonusHp = anglesCount * 2; player.hp += bonusHp;
+        log += ` (คอมโบหมู่! ฮีลแรงขึ้น +${bonusHp} 💖)`;
+      }
+
+      // 📈 เครสเชนโด: สเกลดาเมจตามไพ่ที่ลงไปแล้วในเทิร์นนี้
+      if(eff.scalePlayAreaCombat) {
+        const playedCount = player.playArea.length; // จำนวนไพ่ที่วางไปก่อนหน้านี้
+        if (playedCount > 0) { player.combat += playedCount; log += ` (เครสเชนโด! ได้โบนัสโจมตี +${playedCount} ⚔️)`; }
+      }
+
+      // 🦇 แวมไพร์: ดูดเลือดศัตรู
+      if(eff.stealHp && room.players.length > 1) {
+        const targetIndex = (playerIndex + 1) % room.players.length; const target = room.players[targetIndex];
+        const stolenHp = Math.min(target.hp, eff.stealHp); target.hp -= stolenHp; player.hp += stolenHp;
+        if(stolenHp > 0) log += ` (ดูดเลือดมาได้ ${stolenHp} 💖!)`;
       }
     };
 
-    // ใช้สกิลหลัก
     applyEffects(card.effect);
-    
-    // ใช้สกิลคอมโบ (ถ้ามีพรรคพวกสีเดียวกันบนบอร์ด)
-    if(hasAlly && card.ally) {
-      log += ` 🔥 คอมโบ ${card.faction.toUpperCase()} ทำงาน!`;
-      applyEffects(card.ally);
-    }
+    if(hasAlly && card.ally) { log += ` 🔥 คอมโบ ${card.faction.toUpperCase()} ทำงาน!`; applyEffects(card.ally); }
     
     player.playArea.push(card);
     if(!room.history) room.history = []; room.history.unshift(log); if(room.history.length > 15) room.history.pop();

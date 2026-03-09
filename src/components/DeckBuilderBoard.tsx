@@ -94,6 +94,13 @@ export default function DeckBuilderBoard({ roomId, username }: { roomId: string;
     if(effect.draw) blocks.push(`จั่วไพ่เพิ่ม ${effect.draw} ใบ`);
     if(effect.steal) blocks.push(`ขโมยเงินศัตรู ${effect.steal}`);
     if(effect.discardEnemy) blocks.push(`ศัตรูทิ้งไพ่ ${effect.discardEnemy} ใบ`);
+    
+    // ✨ สกิลระดับ Ultimate 4 สาย
+    if(effect.discardSelf) blocks.push(`สังเวยไพ่ในมือสุ่ม ${effect.discardSelf} ใบ`);
+    if(effect.scaleAnglesHp) blocks.push(`ฮีล +2 ตามจำนวนไพ่ Angles บนโต๊ะ`);
+    if(effect.scalePlayAreaCombat) blocks.push(`โจมตี +1 ตามจำนวนไพ่ที่ลงไปก่อนหน้า`);
+    if(effect.stealHp) blocks.push(`ดูดเลือดศัตรู ${effect.stealHp} หน่วย`);
+    
     return blocks;
   };
 
