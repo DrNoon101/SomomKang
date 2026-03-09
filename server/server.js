@@ -208,40 +208,40 @@ io.on("connection", (socket) => {
     broadcastRacingState(roomId);
   });
 
-  socket.on("start_race", ({ roomId }) => {
-    const room = racingRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
-    room.status = "playing"; room.winnerRacerId = null; room.players.forEach(p => p.wonAmount = 0);
-    broadcastRacingState(roomId);
-
-    // 🎲 ระบบสุ่มความกาวของการวิ่ง
-    room.raceInterval = setInterval(() => {
-      let hasWinner = false;
-      room.racers.forEach(r => {
-        // สุ่มเดินหน้า 0-8 เปอร์เซ็นต์ (ความกาวคือมีโอกาส 0 คือยืนนิ่งๆ)
-        const move = Math.floor(Math.random() * 9);
-        r.progress += move;
-        if (r.progress >= 100) { r.progress = 100; hasWinner = true; if(!room.winnerRacerId) room.winnerRacerId = r.id; }
-      });
-
-      broadcastRacingState(roomId);
-
-      if (hasWinner) {
-        clearInterval(room.raceInterval);
-        room.status = "ended";
-        
-        // 💰 แจกจ่ายเงินรางวัลให้คนแทงถูก (เงินกองกลางหารแบ่งตามสัดส่วนคนที่แทงถูก)
-        const winners = room.players.filter(p => p.betRacerId === room.winnerRacerId);
-        if (winners.length > 0) {
-          const totalWinningBets = winners.reduce((sum, p) => sum + p.betAmount, 0);
-          winners.forEach(p => {
-            const proportion = p.betAmount / totalWinningBets;
-            p.wonAmount = Math.floor(room.totalPool * proportion);
-            p.chips += p.wonAmount;
-          });
-        }
-        broadcastRacingState(roomId);
-      }
-    }, 500); // อัปเดตทุกๆ 0.5 วินาที
+  socket.on("start_race", ({ roomId }) => { 
+    const room = racingRooms.get(roomId); 
+    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return; 
+    room.status = "playing"; room.winnerRacerId = null; room.players.forEach(p => p.wonAmount = 0); 
+    broadcastRacingState(roomId); 
+    
+    // 🔥 ปรับความกาวให้ลุ้นนานขึ้น!
+    room.raceInterval = setInterval(() => { 
+      let hasWinner = false; 
+      room.racers.forEach(r => { 
+        // 🐢 สุ่มเดินหน้า 0-3 เปอร์เซ็นต์ (ลดจากเดิม 0-8 เพื่อให้วิ่งช้าลงแบบอืดๆ)
+        const move = Math.floor(Math.random() * 4); 
+        r.progress += move; 
+        if (r.progress >= 100) { 
+          r.progress = 100; hasWinner = true; 
+          if(!room.winnerRacerId) room.winnerRacerId = r.id; 
+        } 
+      }); 
+      broadcastRacingState(roomId); 
+      
+      if (hasWinner) { 
+        clearInterval(room.raceInterval); room.status = "ended"; 
+        const winners = room.players.filter(p => p.betRacerId === room.winnerRacerId); 
+        if (winners.length > 0) { 
+          const totalWinningBets = winners.reduce((sum, p) => sum + p.betAmount, 0); 
+          winners.forEach(p => { 
+            const proportion = p.betAmount / totalWinningBets; 
+            p.wonAmount = Math.floor(room.totalPool * proportion); 
+            p.chips += p.wonAmount; 
+          }); 
+        } 
+        broadcastRacingState(roomId); 
+      } 
+    }, 300); // ⏱️ ปรับให้หน้าจอขยับสมูทขึ้น (ทุกๆ 0.3 วินาที) แต่อัตราก้าวเดินสั้นลง
   });
 
   socket.on("reset_race", ({ roomId }) => {
