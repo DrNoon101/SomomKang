@@ -86,7 +86,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
               <>
                 <AnimatePresence mode="wait">
                   {gameState.lastCard && (
-                    <motion.div key={gameState.lastCard.id + gameState.deckCount} initial={{ scale: 0, rotateY: 180 }} animate={{ scale: 1, rotateY: 0 }} className="absolute z-30 bg-gradient-to-br from-gray-100 to-white text-black p-6 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-4 border-gold text-center w-64 h-80 flex flex-col items-center justify-center gap-4">
+                    <motion.div key={gameState.lastCard.id + gameState.deckCount} initial={{ scale: 0, rotateY: 180 }} animate={{ scale: 1, rotateY: 0 }} className="z-30 bg-gradient-to-br from-gray-100 to-white text-black p-6 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-4 border-gold text-center w-64 h-80 flex flex-col items-center justify-center gap-4 shrink-0">
                       <div className="text-7xl">{gameState.lastCard.emoji}</div>
                       <h3 className="text-2xl font-black text-red-600">{gameState.lastCard.name}</h3>
                       <p className="text-gray-700 font-bold text-sm">{gameState.lastCard.desc}</p>
@@ -94,7 +94,8 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <div className="mt-auto mb-10 text-center z-10">
+                
+                <div className="text-center z-10 flex flex-col items-center mt-4">
                   <div className="text-purple-300 font-bold mb-4">ไพ่เหลือ: <span className="text-3xl text-white">{gameState.deckCount}</span> ใบ</div>
                   {isMyTurn ? (
                     <button onClick={handleDraw} className="px-10 py-5 bg-gradient-to-r from-purple-600 to-pink-500 hover:scale-110 text-white font-black text-2xl rounded-full shadow-[0_0_40px_purple] transition-all border-4 border-white animate-pulse">🔥 จั่วไพ่!</button>
