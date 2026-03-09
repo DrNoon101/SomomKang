@@ -15,9 +15,11 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showSoundHint, setShowSoundHint] = useState(true);
-  const lastCardIdRef = useRef<string | null>(null);
   
-  // 🔥 ใช้ useRef แทน State เพื่อไม่ให้มันไปรบกวนการเชื่อมต่อเน็ต
+  // ✨ เพิ่มตัวจับชีพจรว่าเน็ตเชื่อมต่อกับสมองกลได้หรือยัง
+  const [isConnected, setIsConnected] = useState(false); 
+  
+  const lastCardIdRef = useRef<string | null>(null);
   const hasInteractedRef = useRef(false);
 
   const audioDraw = useRef<HTMLAudioElement>(null);
@@ -47,6 +49,11 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   useEffect(() => {
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
+
+    // เช็คสถานะการเชื่อมต่อ
+    s.on("connect", () => setIsConnected(true));
+    s.on("disconnect", () => setIsConnected(false));
+
     const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
     s.emit("join_gacha_room", { roomId, username, maxPlayers });
 
@@ -77,14 +84,25 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
     return () => { s.disconnect(); };
-  }, [roomId, username, router]); // 🔥 คลีนโค้ดตรงนี้แล้ว เน็ตจะไม่ตัดเวลาคลิกจออีกต่อไป!
+  }, [roomId, username, router]); 
 
-  // ✨ ถ้าเน็ตยังไม่มา หรือเซิร์ฟเวอร์โหลดอยู่ จะขึ้นหน้าจอนี้แทนจอดำ!
+  // ✨ อัปเกรดหน้าจอโหลดให้บอกสถานะชัดเจนว่ารออะไรอยู่!
   if (!gameState || !socket) return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans">
-      <div className="text-8xl mb-4 animate-spin">🔮</div>
-      <h2 className="text-2xl font-bold animate-pulse text-purple-300">กำลังเชื่อมต่อประตูนรก...</h2>
-      <p className="text-sm text-gray-400 mt-2">(ถ้านานเกินไป ให้ลองกด Refresh 1 รอบครับ)</p>
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans text-center px-4">
+      <div className="text-8xl mb-6 animate-spin">🔮</div>
+      <h2 className="text-3xl font-bold animate-pulse text-purple-300 mb-4">
+        {isConnected ? "เชื่อมต่อสำเร็จ! กำลังสับไพ่..." : "กำลังปลุกสมองกลให้ตื่น..."}
+      </h2>
+      {!isConnected && (
+        <div className="max-w-lg bg-black/40 p-6 rounded-2xl border border-purple-500/50 shadow-lg text-left">
+          <h3 className="text-yellow-400 font-bold mb-2">💡 โค้ชขอรายงานสถานการณ์:</h3>
+          <ul className="text-sm text-gray-300 space-y-2 list-disc pl-4">
+            <li>ตอนนี้หน้าเว็บอัปเดตเสร็จแล้ว แต่ <b>Server (สมองกล)</b> กำลังรีสตาร์ทตัวเองอยู่ครับ</li>
+            <li>ปกติจะใช้เวลาประมาณ <b>2 ถึง 4 นาที</b> ในการตื่นขึ้นมา</li>
+            <li>ถ้าเกิน 5 นาทีแล้วยังหมุนติ้วๆ แสดงว่าโค้ดสมองกลที่แก้ไปรอบก่อนอาจจะพิมพ์ตกหล่น (พัง) ให้แคปหน้าจอที่มี Error ส่งมาให้โค้ชดูได้เลยครับ!</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 
@@ -109,7 +127,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   return (
     <div onClick={() => { hasInteractedRef.current = true; setShowSoundHint(false); }} className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
       
-      {/* 🔊 ลำโพงฝังซ่อน */}
       <audio ref={audioDraw} src="https://www.soundjay.com/buttons/sounds/button-20.mp3" preload="auto" />
       <audio ref={audioEvil} src="https://www.soundjay.com/human/sounds/laughter-01.mp3" preload="auto" />
       <audio ref={audioJackpot} src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" preload="auto" />
