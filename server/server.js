@@ -176,7 +176,7 @@ function broadcastRacingState(roomId) {
 // 🔌 Socket.io Events
 // ==========================================
 io.on("connection", (socket) => {
-  
+  console.log("[Gacha][Server] New connection", { socketId: socket.id });
   // --- SomomKang ---
   socket.on("join_room", ({ roomId, username, maxPlayers }) => {
     if (!roomId) return; const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เล่น"; const room = getOrCreateRoom(roomId);
@@ -309,9 +309,15 @@ io.on("connection", (socket) => {
 
   // --- Gacha Hell ---
   socket.on("join_gacha_room", ({ roomId, username, maxPlayers }) => {
+    console.log("[Gacha][Server] join_gacha_room received", { socketId: socket.id, roomId, username, maxPlayers });
     if (!roomId) return;
     const safeName = username && String(username).trim() ? String(username).trim() : "ผู้เสี่ยงดวง";
     const room = getOrCreateGachaRoom(roomId);
+    console.log("[Gacha][Server] current gacha room before join", {
+      roomId,
+      status: room.status,
+      players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected }))
+    });
 
     if (room.players.length === 0) {
       room.hostId = socket.id;
@@ -333,17 +339,40 @@ io.on("connection", (socket) => {
         return;
       }
       room.players.push({ id: socket.id, name: safeName, connected: true, chips: 2500 });
+      console.log("[Gacha][Server] new player joined room", {
+        roomId,
+        playerId: socket.id,
+        name: safeName,
+        playersCount: room.players.length
+      });
     }
 
-    socket.join(`gacha_${roomId}`);
+    const roomName = `gacha_${roomId}`;
+    console.log("[Gacha][Server] joining socket to room", { socketId: socket.id, roomName });
+    socket.join(roomName);
     socket.data.gachaRoomId = roomId;
+    console.log("[Gacha][Server] broadcasting initial gacha_state after join", { roomId });
     broadcastGachaState(roomId);
   });
 
   socket.on("start_gacha", ({ roomId }) => {
     const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
-    if (room.players.length < 2) return;
+    if (!room || room.status !== "waiting" || room.hostId !== socket.id) {
+      console.warn("[Gacha][Server] start_gacha rejected", {
+        socketId: socket.id,
+        roomExists: !!room,
+        status: room && room.status,
+        hostId: room && room.hostId
+      });
+      return;
+    }
+    if (room.players.length < 2) {
+      console.warn("[Gacha][Server] start_gacha rejected because not enough players", {
+        roomId,
+        players: room.players.length
+      });
+      return;
+    }
 
     room.status = "playing";
     room.currentTurnIndex = 0;
@@ -351,16 +380,36 @@ io.on("connection", (socket) => {
     room.lastCard = null;
     room.pendingCard = null;
     room.history = [];
-
+    console.log("[Gacha][Server] start_gacha -> broadcasting state", {
+      roomId,
+      players: room.players.length,
+      deckCount: room.deckCount
+    });
     broadcastGachaState(roomId);
   });
 
   socket.on("draw_gacha", ({ roomId }) => {
     const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "playing" || room.deckCount <= 0) return;
+    if (!room || room.status !== "playing" || room.deckCount <= 0) {
+      console.warn("[Gacha][Server] draw_gacha rejected", {
+        socketId: socket.id,
+        roomExists: !!room,
+        status: room && room.status,
+        deckCount: room && room.deckCount
+      });
+      return;
+    }
 
     const playerIndex = room.players.findIndex((p) => p.id === socket.id);
-    if (playerIndex === -1 || playerIndex !== room.currentTurnIndex) return;
+    if (playerIndex === -1 || playerIndex !== room.currentTurnIndex) {
+      console.warn("[Gacha][Server] draw_gacha rejected because not player's turn", {
+        socketId: socket.id,
+        roomId,
+        playerIndex,
+        currentTurnIndex: room.currentTurnIndex
+      });
+      return;
+    }
     const player = room.players[playerIndex];
 
     const delta = Math.floor(Math.random() * 801) - 400; // -400 .. 400
@@ -395,6 +444,13 @@ io.on("connection", (socket) => {
       room.currentTurnIndex = nextIndex;
     }
 
+    console.log("[Gacha][Server] draw_gacha -> broadcasting state", {
+      roomId,
+      playerId: player.id,
+      delta,
+      deckCount: room.deckCount,
+      nextTurnIndex: room.currentTurnIndex
+    });
     broadcastGachaState(roomId);
   });
 
@@ -409,6 +465,10 @@ io.on("connection", (socket) => {
     room.pendingCard = null;
     room.history = [];
 
+    console.log("[Gacha][Server] reset_gacha -> broadcasting state", {
+      roomId,
+      players: room.players.length
+    });
     broadcastGachaState(roomId);
   });
 

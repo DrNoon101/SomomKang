@@ -16,6 +16,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [showTargetModal, setShowTargetModal] = useState(false);
   
   const lastCardIdRef = useRef<string | null>(null);
+  const gotInitialStateRef = useRef(false);
   
   // 🔥 ใช้ Ref เก็บสถานะการคลิก เพื่อไม่ให้รบกวนการรีเฟรชหน้าเว็บ
   const hasInteractedRef = useRef(false);
@@ -60,18 +61,47 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    console.log("[Gacha][Client] useEffect init", { roomId, username });
+
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
 
     const handleConnect = () => {
+      console.log("[Gacha][Client] socket connected", { socketId: s.id, roomId });
       const maxPlayers = parseInt(window.sessionStorage.getItem("gacha_maxPlayers") || "8");
+      console.log("[Gacha][Client] emitting join_gacha_room", { roomId, username, maxPlayers });
       s.emit("join_gacha_room", { roomId, username, maxPlayers });
     };
 
     if (s.connected) handleConnect();
     s.on("connect", handleConnect);
 
+    s.on("connect_error", (err) => {
+      console.error("[Gacha][Client] socket connect_error", err);
+    });
+
+    const retryJoinTimeout = window.setTimeout(() => {
+      if (!gotInitialStateRef.current) {
+        console.warn("[Gacha][Client] no gacha_state yet, re-emitting join_gacha_room", { roomId, username });
+        handleConnect();
+      }
+    }, 4000);
+
     s.on("gacha_state", (state: GachaState) => {
+      if (!gotInitialStateRef.current) {
+        console.log("[Gacha][Client] received first gacha_state", {
+          roomId: state.roomId,
+          status: state.status,
+          players: state.players.length
+        });
+        gotInitialStateRef.current = true;
+      } else {
+        console.log("[Gacha][Client] received gacha_state update", {
+          status: state.status,
+          deckCount: state.deckCount
+        });
+      }
+
       setGameState(state);
       
       if (state.status === "waiting_target" && state.currentTurnPlayerId === s.id) {
@@ -96,12 +126,19 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
       }
     });
 
-    s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
+    s.on("gacha_error", (msg) => {
+      console.error("[Gacha][Client] gacha_error", msg);
+      alert(msg.message);
+      router.push("/");
+    });
 
     return () => { 
+      console.log("[Gacha][Client] cleanup useEffect, disconnecting socket", { socketId: s.id });
       s.off("connect", handleConnect);
       s.off("gacha_state");
       s.off("gacha_error");
+      s.off("connect_error");
+      window.clearTimeout(retryJoinTimeout);
       s.disconnect(); 
     };
   }, [roomId, username, router]); 
