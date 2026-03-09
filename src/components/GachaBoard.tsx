@@ -14,52 +14,48 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
-  const [showSoundHint, setShowSoundHint] = useState(true);
   
   const lastCardIdRef = useRef<string | null>(null);
-  const hasInteractedRef = useRef(false);
   
-  // 🔥 ล็อกชื่อผู้เล่นไว้ใน Ref เพื่อป้องกันการตัดเน็ตตอนชื่ออัปเดต!
-  const usernameRef = useRef(username);
-  useEffect(() => { usernameRef.current = username; }, [username]);
+  // 🔥 ใช้ Ref เก็บสถานะการคลิก เพื่อไม่ให้รบกวนการรีเฟรชหน้าเว็บ
+  const hasInteractedRef = useRef(false);
+  const [showSoundHint, setShowSoundHint] = useState(true);
 
-  const audioDraw = useRef<HTMLAudioElement>(null);
-  const audioEvil = useRef<HTMLAudioElement>(null);
-  const audioJackpot = useRef<HTMLAudioElement>(null);
-  const audioExplode = useRef<HTMLAudioElement>(null);
-  const audioFail = useRef<HTMLAudioElement>(null);
-  const audioCash = useRef<HTMLAudioElement>(null);
-  const audioAlert = useRef<HTMLAudioElement>(null);
+  // 🔊 โหลดเสียงแบบล่องหน (ไม่ใช้แท็ก <audio> แล้ว หน้าเว็บจะได้ไม่ช็อค!)
+  const soundsRef = useRef<Record<string, HTMLAudioElement>>({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      soundsRef.current = {
+        draw: new Audio("https://www.soundjay.com/buttons/sounds/button-20.mp3"),
+        evil: new Audio("https://www.soundjay.com/human/sounds/laughter-01.mp3"),
+        jackpot: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3"),
+        explode: new Audio("https://www.soundjay.com/mechanical/sounds/explosion-01.mp3"),
+        fail: new Audio("https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3"),
+        cash: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
+        alert: new Audio("https://www.soundjay.com/buttons/sounds/button-10.mp3")
+      };
+      // ตั้งค่าความดังเสียง
+      Object.values(soundsRef.current).forEach(audio => { audio.volume = 0.5; });
+    }
+  }, []);
 
   const playSound = (type: string) => {
     if (!hasInteractedRef.current) return; 
-    
-    const audios: Record<string, HTMLAudioElement | null> = {
-      draw: audioDraw.current, evil: audioEvil.current, jackpot: audioJackpot.current,
-      explode: audioExplode.current, fail: audioFail.current, cash: audioCash.current, alert: audioAlert.current
-    };
-    
-    const audio = audios[type];
+    const audio = soundsRef.current[type];
     if (audio) {
       audio.currentTime = 0;
-      audio.volume = 0.5;
-      audio.play().catch(e => console.log("Browser บล็อกเสียง:", e));
+      audio.play().catch(e => console.log("เสียงถูกบล็อกโดย Browser:", e));
     }
   };
 
+  // ⚡ ระบบเชื่อมต่อเวอร์ชันที่เสถียรที่สุด (แบบเดียวกับตอนที่พี่บอมเข้าได้ปกติ)
   useEffect(() => {
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
-
-    // 🔥 สร้างฟังก์ชันเข้าห้องที่มั่นคงที่สุด
-    const attemptJoin = () => {
-      const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
-      s.emit("join_gacha_room", { roomId, username: usernameRef.current, maxPlayers });
-    };
-
-    // รอให้ต่อเน็ตติดชัวร์ๆ ค่อยเคาะประตูเข้าห้อง
-    s.on("connect", attemptJoin);
-    if (s.connected) attemptJoin(); // เผื่อกรณีที่มันต่อติดไปก่อนหน้าแล้ว
+    
+    const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
+    s.emit("join_gacha_room", { roomId, username, maxPlayers });
 
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
@@ -88,17 +84,14 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
 
-    // 🔥 เอา username ออกจากวงเล็บนี้ เพื่อไม่ให้มันสั่งตัดเน็ตเวลารีเฟรชชื่อ!
     return () => { s.disconnect(); };
-  }, [roomId, router]); 
+  }, [roomId, username, router]); 
 
-  // หน้าจอโหลดที่สะอาดและปลอดภัยที่สุด
+  // โหลดดิ้งระหว่างรอข้อมูล
   if (!gameState || !socket) return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans text-center px-4">
+    <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans text-center">
       <div className="text-8xl mb-6 animate-spin">🔮</div>
-      <h2 className="text-3xl font-bold animate-pulse text-purple-300 mb-4">
-        กำลังจัดโต๊ะไพ่นรก...
-      </h2>
+      <h2 className="text-3xl font-bold animate-pulse text-purple-300">กำลังเปิดประตูนรก...</h2>
     </div>
   );
 
@@ -123,14 +116,6 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   return (
     <div onClick={() => { hasInteractedRef.current = true; setShowSoundHint(false); }} className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
       
-      <audio ref={audioDraw} src="https://www.soundjay.com/buttons/sounds/button-20.mp3" preload="auto" />
-      <audio ref={audioEvil} src="https://www.soundjay.com/human/sounds/laughter-01.mp3" preload="auto" />
-      <audio ref={audioJackpot} src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" preload="auto" />
-      <audio ref={audioExplode} src="https://www.soundjay.com/mechanical/sounds/explosion-01.mp3" preload="auto" />
-      <audio ref={audioFail} src="https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3" preload="auto" />
-      <audio ref={audioCash} src="https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3" preload="auto" />
-      <audio ref={audioAlert} src="https://www.soundjay.com/buttons/sounds/button-10.mp3" preload="auto" />
-
       <header className="bg-black/60 p-4 flex justify-between items-center z-20 border-b border-purple-500/30">
         <div>
           <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500">🎰 กาชาปองนรก</h1>
