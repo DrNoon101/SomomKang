@@ -10,11 +10,8 @@ export default function GameHub() {
   const [somomkangModal, setSomomkangModal] = useState<"create" | "join" | null>(null);
   const [yamstoryModal, setYamstoryModal] = useState<"create" | "join" | null>(null);
   
-  // ตั้งค่าเกมไพ่
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [rounds, setRounds] = useState(1);
-
-  // ✨ ตั้งค่าเกมนิยายยำเละ (เพิ่มมาใหม่!)
   const [yamMaxPlayers, setYamMaxPlayers] = useState(4);
   const [yamRounds, setYamRounds] = useState(5);
 
@@ -26,33 +23,22 @@ export default function GameHub() {
   }, []);
 
   const checkUsername = () => {
-    if (!username.trim()) {
-      alert("กรุณาใส่ชื่อสุดปั่นก่อนครับ!");
-      return false;
-    }
-    sessionStorage.setItem("somomkang_username", username.trim());
-    return true;
+    if (!username.trim()) { alert("กรุณาใส่ชื่อสุดปั่นก่อนครับ!"); return false; }
+    sessionStorage.setItem("somomkang_username", username.trim()); return true;
   };
 
   const openSomomkang = (mode: "create" | "join") => {
     if (!checkUsername()) return;
-    setRoomId("");
-    setYamstoryModal(null); 
-    setSomomkangModal(mode);
+    setRoomId(""); setYamstoryModal(null); setSomomkangModal(mode);
   };
 
   const openYamstory = (mode: "create" | "join") => {
     if (!checkUsername()) return;
-    setRoomId("");
-    setSomomkangModal(null); 
-    setYamstoryModal(mode);
+    setRoomId(""); setSomomkangModal(null); setYamstoryModal(mode);
   };
 
   const executeSomomkang = () => {
-    if (!roomId.trim()) {
-      alert("กรุณาใส่รหัสห้องด้วยครับ!");
-      return;
-    }
+    if (!roomId.trim()) { alert("กรุณาใส่รหัสห้องด้วยครับ!"); return; }
     sessionStorage.setItem("somomkang_mode", somomkangModal || "join");
     if (somomkangModal === "create") {
       sessionStorage.setItem("somomkang_maxPlayers", maxPlayers.toString());
@@ -62,34 +48,32 @@ export default function GameHub() {
   };
 
   const executeYamstory = () => {
-    if (!roomId.trim()) {
-      alert("กรุณาใส่รหัสห้องด้วยครับ!");
-      return;
-    }
+    if (!roomId.trim()) { alert("กรุณาใส่รหัสห้องด้วยครับ!"); return; }
     sessionStorage.setItem("somomkang_mode", yamstoryModal || "join");
-    
-    // ✨ เซฟการตั้งค่าเกมนิยายลงเครื่องตอนสร้างห้อง
     if (yamstoryModal === "create") {
       sessionStorage.setItem("yamstory_maxPlayers", yamMaxPlayers.toString());
       sessionStorage.setItem("yamstory_rounds", yamRounds.toString());
     }
-    
     window.location.href = `/yamstory?room=${roomId.trim()}`;
   };
 
   return (
     <div className="relative min-h-dvh flex flex-col items-center justify-center bg-gray-900 overflow-hidden font-sans">
       
-      <div className="absolute inset-0 pointer-events-none opacity-20">
-        <div className="absolute top-10 left-10 text-9xl text-gold rotate-12 drop-shadow-2xl blur-[2px]">🃏</div>
-        <div className="absolute bottom-20 right-20 text-9xl text-blue-500 -rotate-12 drop-shadow-2xl blur-[2px]">✍️</div>
+      {/* ✨ พื้นหลังเคลื่อนไหวในหน้าแรก (สัญลักษณ์เกมลอยได้) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <motion.div animate={{ y: [0, -30, 0], rotate: [0, 10, 0] }} transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }} className="absolute top-10 left-10 text-8xl md:text-9xl text-gold opacity-30 blur-[2px]">🃏</motion.div>
+        <motion.div animate={{ y: [0, 30, 0], rotate: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }} className="absolute bottom-20 right-10 md:right-20 text-8xl md:text-9xl text-blue-500 opacity-30 blur-[2px]">✍️</motion.div>
+        <motion.div animate={{ y: [0, -20, 0], rotate: [0, 15, 0] }} transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }} className="absolute top-1/3 right-1/4 text-7xl md:text-8xl text-red-500 opacity-20 blur-[3px]">🎲</motion.div>
+        <motion.div animate={{ y: [0, 20, 0], rotate: [0, -15, 0] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} className="absolute bottom-1/4 left-1/4 text-7xl md:text-8xl text-green-500 opacity-20 blur-[3px]">🎯</motion.div>
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20 animate-pulse"></div>
       </div>
 
       <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} className="z-10 text-center mb-10">
         <h1 className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-gold via-amber-300 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]">
           Vorvare&apos;s Arcade
         </h1>
-        <p className="text-white/70 mt-3 text-lg sm:text-xl font-medium">ศูนย์รวมเกมทำลายมิตรภาพ</p>
+        {/* ❌ เอาคำว่า "ศูนย์รวมเกมทำลายมิตรภาพ" ออกไปแล้วครับ */}
       </motion.div>
 
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="z-10 w-full max-w-md px-4 flex flex-col items-center gap-6">
@@ -127,9 +111,7 @@ export default function GameHub() {
 
       <AnimatePresence>
         
-        {/* ------------------------------------------- */}
         {/* กล่อง SomomKang */}
-        {/* ------------------------------------------- */}
         {somomkangModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSomomkangModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-green-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -171,9 +153,7 @@ export default function GameHub() {
           </motion.div>
         )}
 
-        {/* ------------------------------------------- */}
-        {/* ✨ กล่องเกมนิยาย (เพิ่มตั้งค่าแล้ว!) */}
-        {/* ------------------------------------------- */}
+        {/* กล่องเกมนิยาย */}
         {yamstoryModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setYamstoryModal(null)}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-gray-900 border-2 border-blue-500/50 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative" onClick={(e) => e.stopPropagation()}>
@@ -187,8 +167,6 @@ export default function GameHub() {
                   <label className="block text-white/70 text-sm font-bold mb-2">รหัสห้อง</label>
                   <input type="text" placeholder="เช่น ROOM99" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === "Enter") executeYamstory(); }} className="w-full px-4 py-3 bg-black/50 border border-white/20 rounded-xl text-white font-bold outline-none focus:border-blue-500 uppercase text-center text-xl tracking-widest" />
                 </div>
-                
-                {/* ✨ ดรอปดาวน์ตั้งค่า โผล่เฉพาะตอนสร้างห้อง */}
                 {yamstoryModal === "create" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -211,7 +189,6 @@ export default function GameHub() {
                     </div>
                   </div>
                 )}
-
                 <button type="button" onClick={executeYamstory} className="w-full py-4 rounded-xl text-white font-black text-lg transition-all hover:scale-[1.02] shadow-lg mt-2 bg-gradient-to-r from-blue-400 to-indigo-400">
                   {yamstoryModal === "create" ? "เริ่มเปิดเรื่อง!" : "หยิบปากกาแจมด้วย!"}
                 </button>

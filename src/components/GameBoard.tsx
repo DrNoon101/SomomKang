@@ -9,12 +9,11 @@ interface Card { id: string; suit: string; rank: string; }
 interface Player { id: string; name: string; handCount: number; connected: boolean; chips: number; roundChipsChange?: number; hand?: Card[]; points?: number; }
 interface GameState { roomId: string; hostId: string; maxPlayers: number; status: "waiting" | "playing" | "ended"; currentTurnPlayerId: string | null; drawPileCount: number; discardTop: Card | null; winnerId: string | null; instantWinType: string | null; endGameReason: string | null; players: Player[]; endedGameData?: any; }
 
-// 🎵 ลิงก์เสียง Effect ทั้งหมด
 const SFX_SELECT = "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3"; 
 const SFX_PLAY = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; 
 const SFX_KANG = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3"; 
-const SFX_GOT_FLOWED = "https://assets.mixkit.co/active_storage/sfx/274/274-preview.mp3"; // 💥 เสียงโดนกระแทกตอนโดนไหล
-const SFX_GAME_END = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"; // 🏆 เสียง Fanfare จบเกม
+const SFX_GOT_FLOWED = "https://assets.mixkit.co/active_storage/sfx/274/274-preview.mp3"; 
+const SFX_GAME_END = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"; 
 
 export default function GameBoard({ roomId, username }: { roomId: string; username: string }) {
   const router = useRouter();
@@ -27,16 +26,13 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   const [gotFlowed, setGotFlowed] = useState(false);
   const [recentFlowPlayerId, setRecentFlowPlayerId] = useState<string | null>(null);
 
-  // 🔊 ระบบควบคุมเสียงที่ฉลาดขึ้น
   const [isMuted, setIsMuted] = useState(true);
-  const isMutedRef = useRef(isMuted); // ใช้ Ref ช่วยจำสถานะ Mute ให้ทำงานได้เรียลไทม์
+  const isMutedRef = useRef(isMuted); 
   const bgmRef = useRef<HTMLAudioElement>(null);
   const prevStatusRef = useRef<string | null>(null);
 
-  // อัปเดต Ref ทุกครั้งที่กดเปิด/ปิดเสียง
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
-  // ฟังก์ชันเล่นเสียง SFX
   const playSound = (url: string) => {
     if (!isMutedRef.current) {
       const audio = new Audio(url);
@@ -64,9 +60,8 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     s.on("flow_available", (data) => setFlowData(data));
     s.on("error_message", (msg) => { alert(msg.message); router.push("/"); });
 
-    // 💥 เมื่อโดนไหล (เยาะเย้ย)
     s.on("got_flowed_mock", () => {
-      playSound(SFX_GOT_FLOWED); // เล่นเสียงกระแทก!
+      playSound(SFX_GOT_FLOWED);
       setGotFlowed(true);
       setTimeout(() => setGotFlowed(false), 3000);
     });
@@ -79,22 +74,15 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
     return () => { s.disconnect(); };
   }, [roomId, username, router]);
 
-  // 🎵 จัดการเสียง BGM และ เสียงจบเกม
   useEffect(() => {
     if (bgmRef.current) {
-      // ถ้าปิดเสียงอยู่ หรือ เกมจบแล้ว -> ปิด BGM
-      if (isMuted || gameState?.status === "ended") {
-        bgmRef.current.pause();
-      } else {
-        // ถ้าเล่นอยู่ ให้เปิด BGM
-        bgmRef.current.play().catch(() => setIsMuted(true));
-      }
+      if (isMuted || gameState?.status === "ended") bgmRef.current.pause();
+      else bgmRef.current.play().catch(() => setIsMuted(true));
     }
 
-    // 🏆 เช็คว่าเกมเพิ่งตัดจบใช่ไหม (เล่นเสียง Fanfare)
     if (gameState?.status) {
       if (gameState.status === "ended" && prevStatusRef.current !== "ended") {
-        playSound(SFX_GAME_END); // เล่นเสียงจบเกม!
+        playSound(SFX_GAME_END); 
       }
       prevStatusRef.current = gameState.status;
     }
@@ -334,6 +322,7 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
         </div>
       )}
 
+      {/* หน้าจอสรุปผล */}
       {gameState.status === "ended" && gameState.endedGameData && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overflow-y-auto">
           <motion.div initial={{ scale: 0.8, opacity: 0, rotateX: 20 }} animate={{ scale: 1, opacity: 1, rotateX: 0 }} className="bg-gradient-to-b from-gray-900 to-black border-4 border-gold rounded-3xl p-6 sm:p-10 max-w-3xl w-full shadow-[0_0_80px_rgba(250,204,21,0.4)] my-auto relative overflow-hidden">
@@ -352,26 +341,43 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             </div>
 
             <div className="space-y-4 relative z-10">
-              {gameState.endedGameData.players.map((p: any) => (
-                <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4`}>
-                  <div className="text-center sm:text-left min-w-[120px]">
-                    <span className="font-black text-xl text-white block">{p.name}</span>
-                    <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
-                  </div>
-                  
-                  <div className="flex gap-[-10px] sm:gap-[-5px]">
-                    {p.hand.map((c: Card, i: number) => (
-                      <div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">
-                        {renderCard(c, false)}
-                      </div>
-                    ))}
-                  </div>
+              {gameState.endedGameData.players.map((p: any) => {
+                // 💥 เช็คว่าคนนี้โดนแคง/เสียชิปเพราะแคงใช่ไหม?
+                const isLoserFromKang = p.roundChipsChange < 0 && (gameState.endedGameData.endGameReason === "kang" || gameState.endedGameData.endGameReason === "kang_shipwreck");
 
-                  <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
-                    {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
+                return (
+                  <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4 relative`}>
+                    
+                    {/* 😿 มีมประจานคนโดนแคง! (JPEG สั่นยุกยิก) */}
+                    {isLoserFromKang && (
+                      <motion.img 
+                        src="mock-kang.jpg" 
+                        alt="โดนแคง"
+                        animate={{ x: [-2, 2, -2, 2, 0], y: [-2, 2, -2, 2, 0], rotate: [-5, 5, -5, 5, 0] }}
+                        transition={{ repeat: Infinity, duration: 0.1 }}
+                        className="absolute -top-3 -left-3 sm:-top-5 sm:-left-5 w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-red-500 shadow-[0_0_15px_red] z-20 object-cover pointer-events-none"
+                      />
+                    )}
+
+                    <div className="text-center sm:text-left min-w-[120px]">
+                      <span className="font-black text-xl text-white block">{p.name}</span>
+                      <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
+                    </div>
+                    
+                    <div className="flex gap-[-10px] sm:gap-[-5px]">
+                      {p.hand.map((c: Card, i: number) => (
+                        <div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">
+                          {renderCard(c, false)}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
+                      {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {isHost && (
