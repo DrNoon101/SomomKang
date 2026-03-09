@@ -23,25 +23,32 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
   // 🔊 โหลดเสียงแบบล่องหน (ไม่ใช้แท็ก <audio> แล้ว หน้าเว็บจะได้ไม่ช็อค!)
   const soundsRef = useRef<Record<string, HTMLAudioElement>>({});
+  const soundsInitializedRef = useRef(false);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      soundsRef.current = {
-        draw: new Audio("https://www.soundjay.com/buttons/sounds/button-20.mp3"),
-        evil: new Audio("https://www.soundjay.com/human/sounds/laughter-01.mp3"),
-        jackpot: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3"),
-        explode: new Audio("https://www.soundjay.com/mechanical/sounds/explosion-01.mp3"),
-        fail: new Audio("https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3"),
-        cash: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
-        alert: new Audio("https://www.soundjay.com/buttons/sounds/button-10.mp3")
-      };
-      // ตั้งค่าความดังเสียง
-      Object.values(soundsRef.current).forEach(audio => { audio.volume = 0.5; });
-    }
-  }, []);
+  const initSoundsIfNeeded = () => {
+    if (soundsInitializedRef.current) return;
+    if (typeof window === "undefined") return;
+
+    soundsRef.current = {
+      draw: new Audio("https://www.soundjay.com/buttons/sounds/button-20.mp3"),
+      evil: new Audio("https://www.soundjay.com/human/sounds/laughter-01.mp3"),
+      jackpot: new Audio("https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3"),
+      explode: new Audio("https://www.soundjay.com/mechanical/sounds/explosion-01.mp3"),
+      fail: new Audio("https://www.soundjay.com/misc/sounds/fail-trombone-01.mp3"),
+      cash: new Audio("https://www.soundjay.com/misc/sounds/coins-in-hand-2.mp3"),
+      alert: new Audio("https://www.soundjay.com/buttons/sounds/button-10.mp3")
+    };
+
+    Object.values(soundsRef.current).forEach(audio => {
+      audio.volume = 0.5;
+    });
+
+    soundsInitializedRef.current = true;
+  };
 
   const playSound = (type: string) => {
     if (!hasInteractedRef.current) return; 
+    if (!soundsInitializedRef.current) initSoundsIfNeeded();
     const audio = soundsRef.current[type];
     if (audio) {
       audio.currentTime = 0;
@@ -51,11 +58,18 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
   // ⚡ ระบบเชื่อมต่อเวอร์ชันที่เสถียรที่สุด (แบบเดียวกับตอนที่พี่บอมเข้าได้ปกติ)
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
-    
-    const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
-    s.emit("join_gacha_room", { roomId, username, maxPlayers });
+
+    const handleConnect = () => {
+      const maxPlayers = parseInt(window.sessionStorage.getItem("gacha_maxPlayers") || "8");
+      s.emit("join_gacha_room", { roomId, username, maxPlayers });
+    };
+
+    if (s.connected) handleConnect();
+    s.on("connect", handleConnect);
 
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
@@ -84,7 +98,12 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
 
-    return () => { s.disconnect(); };
+    return () => { 
+      s.off("connect", handleConnect);
+      s.off("gacha_state");
+      s.off("gacha_error");
+      s.disconnect(); 
+    };
   }, [roomId, username, router]); 
 
   // โหลดดิ้งระหว่างรอข้อมูล
@@ -103,6 +122,7 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const handleDraw = () => { 
     hasInteractedRef.current = true;
     setShowSoundHint(false);
+    initSoundsIfNeeded();
     playSound("draw"); 
     socket.emit("draw_gacha", { roomId }); 
   };
@@ -114,7 +134,14 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   };
 
   return (
-    <div onClick={() => { hasInteractedRef.current = true; setShowSoundHint(false); }} className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative">
+    <div
+      onClick={() => { 
+        hasInteractedRef.current = true; 
+        setShowSoundHint(false); 
+        initSoundsIfNeeded();
+      }}
+      className="min-h-dvh bg-gradient-to-b from-purple-950 to-black text-white font-sans overflow-hidden flex flex-col relative"
+    >
       
       <header className="bg-black/60 p-4 flex justify-between items-center z-20 border-b border-purple-500/30">
         <div>
