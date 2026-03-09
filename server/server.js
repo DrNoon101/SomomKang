@@ -281,6 +281,36 @@ function broadcastRacingState(roomId) {
 }
 
 // ==========================================
+// 🧬 ระบบเกม 6: Somom's Life (Multiplayer BitLife)
+// ==========================================
+const lifeRooms = new Map();
+
+// ฐานข้อมูลเหตุการณ์สุ่มรายปี
+const LIFE_EVENTS = [
+  { text: "คุณเดินสะดุดก้อนหินหน้าฟาดพื้นอย่างแรง", hp: -10, looks: -5, happiness: -5 },
+  { text: "คุณเก็บเงินได้ในกระเป๋ากางเกงยีนส์เก่าๆ", gold: 500, happiness: 10 },
+  { text: "คุณดูสารคดีกาวๆ จนรู้สึกเบิกเนตร", smarts: 10, happiness: 5 },
+  { text: "คุณกินส้มตำค้างคืน ท้องเสียหนักมาก", hp: -20, happiness: -15 },
+  { text: "คุณถูกหมาจรจัดวิ่งไล่กัด", hp: -5, happiness: -10 },
+  { text: "คุณลองตัดผมเองแล้วแหว่ง รับตัวเองไม่ได้", looks: -15, happiness: -20 },
+  { text: "คุณถูกลอตเตอรี่รางวัลเลขท้าย!", gold: 2000, happiness: 30 },
+  { text: "คุณนั่งสมาธิใต้ต้นโพธิ์ จิตใจสงบ", hp: 5, smarts: 5, happiness: 10 },
+  { text: "ไม่มีอะไรเกิดขึ้น ชีวิตเรียบง่ายและน่าเบื่อ", hp: 2, happiness: -2 },
+  { text: "คุณโดนเพื่อนแกล้งเอาแมลงสาบใส่กระเป๋า", happiness: -10, smarts: -2 }
+];
+
+function getOrCreateLifeRoom(roomId) {
+  let room = lifeRooms.get(roomId);
+  if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 8, history: [] }; lifeRooms.set(roomId, room); }
+  return room;
+}
+
+function broadcastLifeState(roomId) {
+  const room = lifeRooms.get(roomId); if (!room) return;
+  io.to(`life_${roomId}`).emit("life_state", room);
+}
+
+// ==========================================
 // 🔌 Socket.io Events (การรับส่งคำสั่งทั้งหมด)
 // ==========================================
 io.on("connection", (socket) => {
@@ -594,6 +624,75 @@ io.on("connection", (socket) => {
     broadcastDeckState(roomId);
   });
 
+  // ==========================================
+  // 🧬 Somom's Life Events
+  // ==========================================
+  socket.on("join_life_room", ({ roomId, username, maxPlayers }) => {
+    if (!roomId) return; const safeName = username ? String(username).trim() : "วิญญาณเร่ร่อน"; const room = getOrCreateLifeRoom(roomId);
+    if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
+    let existingPlayer = room.players.find(p => p.name === safeName);
+    if (existingPlayer) { if (room.hostId === existingPlayer.id) room.hostId = socket.id; existingPlayer.id = socket.id; existingPlayer.connected = true; } 
+    else {
+      if (room.status !== "waiting") return socket.emit("life_error", { message: "เขาเกิดกันไปหมดแล้ว รอชาติน้านะ!" });
+      if (room.players.length >= room.maxPlayers) return socket.emit("life_error", { message: "ห้องคลอดเต็ม!" });
+      
+      // 🎲 สุ่มสเตตัสตอนเกิด (RNG)
+      room.players.push({ 
+        id: socket.id, name: safeName, connected: true, isDead: false, age: 0, gold: 0,
+        hp: 100, 
+        happiness: 80, 
+        smarts: Math.floor(Math.random() * 60) + 20, // โง่หรือฉลาดแต่เกิด
+        looks: Math.floor(Math.random() * 60) + 20,  // หน้าตาดีหรือแย่แต่เกิด
+        log: ["👶 ถือกำเนิดขึ้นมาบนโลกอันโหดร้าย..."]
+      });
+    }
+    socket.join(`life_${roomId}`); socket.data.lifeRoomId = roomId; broadcastLifeState(roomId);
+  });
+
+  socket.on("start_life_game", ({ roomId }) => {
+    const room = lifeRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
+    room.status = "playing"; room.history = ["🌍 พระเจ้าระฆังเริ่มชีวิตแล้ว! กด Age Up เลย!"];
+    broadcastLifeState(roomId);
+  });
+
+  socket.on("age_up", ({ roomId }) => {
+    const room = lifeRooms.get(roomId); if (!room || room.status !== "playing") return;
+    const player = room.players.find(p => p.id === socket.id); if (!player || player.isDead) return;
+    
+    player.age += 1;
+    let eventLog = `อายุ ${player.age} ปี: `;
+    
+    // สุ่มเหตุการณ์
+    const randEvent = LIFE_EVENTS[Math.floor(Math.random() * LIFE_EVENTS.length)];
+    eventLog += randEvent.text;
+    
+    // อัปเดตสเตตัส
+    if(randEvent.hp) player.hp += randEvent.hp;
+    if(randEvent.happiness) player.happiness += randEvent.happiness;
+    if(randEvent.smarts) player.smarts += randEvent.smarts;
+    if(randEvent.looks) player.looks += randEvent.looks;
+    if(randEvent.gold) player.gold += randEvent.gold;
+    
+    // คุมสเตตัสให้อยู่ในกรอบ 0-100
+    player.happiness = Math.max(0, Math.min(100, player.happiness));
+    player.smarts = Math.max(0, Math.min(100, player.smarts));
+    player.looks = Math.max(0, Math.min(100, player.looks));
+    
+    // เช็คความตาย (HP หมด หรือแก่ตาย)
+    if(player.hp <= 0) {
+      player.hp = 0; player.isDead = true;
+      eventLog += " 💀 [เสียชีวิตแล้ว]";
+      room.history.unshift(`🪦 ${player.name} สิ้นใจในวัย ${player.age} ปี!`);
+    } else if (player.age >= 100) {
+       player.hp = 0; player.isDead = true;
+       eventLog += " 🕊️ [หมดอายุขัยตามธรรมชาติ]";
+       room.history.unshift(`🕊️ ${player.name} หมดอายุขัยอย่างสงบในวัย ${player.age} ปี`);
+    }
+
+    player.log.unshift(eventLog);
+    broadcastLifeState(roomId);
+  });
+
   // --- Disconnect Handler (ป้องกันห้องผีสิงครบทุกเกม) ---
   socket.on("disconnect", () => {
     const sId = socket.id;
@@ -607,6 +706,8 @@ io.on("connection", (socket) => {
     if (socket.data.gachaRoomId) { const room = gachaRooms.get(socket.data.gachaRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) gachaRooms.delete(socket.data.gachaRoomId); else broadcastGachaState(socket.data.gachaRoomId); } }
     // 5. Deck Builder
     if (socket.data.deckRoomId) { const room = deckRooms.get(socket.data.deckRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) deckRooms.delete(socket.data.deckRoomId); else broadcastDeckState(socket.data.deckRoomId); } }
+    // 6. Somom's Life
+    if (socket.data.lifeRoomId) { const room = lifeRooms.get(socket.data.lifeRoomId); if (room) { const pIdx = room.players.findIndex(p => p.id === sId); if (pIdx !== -1) { if (room.status === "waiting") room.players.splice(pIdx, 1); else room.players[pIdx].connected = false; } if (room.hostId === sId) { const nextHost = room.players.find(p => p.connected); room.hostId = nextHost ? nextHost.id : null; } if (!room.players.some(p => p.connected)) lifeRooms.delete(socket.data.lifeRoomId); else broadcastLifeState(socket.data.lifeRoomId); } }
   });
 });
 
