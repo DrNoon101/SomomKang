@@ -285,18 +285,48 @@ function broadcastRacingState(roomId) {
 // ==========================================
 const lifeRooms = new Map();
 
-// ฐานข้อมูลเหตุการณ์สุ่มรายปี
+// ฐานข้อมูลเหตุการณ์สุ่มแบ่งตามช่วงอายุ (Age-gated Events)
 const LIFE_EVENTS = [
-  { text: "คุณเดินสะดุดก้อนหินหน้าฟาดพื้นอย่างแรง", hp: -10, looks: -5, happiness: -5 },
-  { text: "คุณเก็บเงินได้ในกระเป๋ากางเกงยีนส์เก่าๆ", gold: 500, happiness: 10 },
-  { text: "คุณดูสารคดีกาวๆ จนรู้สึกเบิกเนตร", smarts: 10, happiness: 5 },
-  { text: "คุณกินส้มตำค้างคืน ท้องเสียหนักมาก", hp: -20, happiness: -15 },
-  { text: "คุณถูกหมาจรจัดวิ่งไล่กัด", hp: -5, happiness: -10 },
-  { text: "คุณลองตัดผมเองแล้วแหว่ง รับตัวเองไม่ได้", looks: -15, happiness: -20 },
-  { text: "คุณถูกลอตเตอรี่รางวัลเลขท้าย!", gold: 2000, happiness: 30 },
-  { text: "คุณนั่งสมาธิใต้ต้นโพธิ์ จิตใจสงบ", hp: 5, smarts: 5, happiness: 10 },
-  { text: "ไม่มีอะไรเกิดขึ้น ชีวิตเรียบง่ายและน่าเบื่อ", hp: 2, happiness: -2 },
-  { text: "คุณโดนเพื่อนแกล้งเอาแมลงสาบใส่กระเป๋า", happiness: -10, smarts: -2 }
+  // 🍼 ทารก & วัยเด็กตอนต้น (0-4 ปี)
+  { minAge: 0, maxAge: 4, text: "คุณพูดคำแรกได้สำเร็จ พ่อแม่ดีใจมาก", happiness: 10, smarts: 5 },
+  { minAge: 0, maxAge: 4, text: "คุณพยายามเดินแล้วล้มหน้าฟาดพื้น ร้องไห้จ้า", hp: -5, happiness: -10 },
+  { minAge: 0, maxAge: 4, text: "คุณอึใส่กางเกงแล้วหัวเราะชอบใจ", happiness: 5 },
+  { minAge: 0, maxAge: 4, text: "ติดไวรัส RSV จากเนอสเซอรี่", hp: -15, happiness: -10 },
+
+  // 🎒 วัยเด็ก (5-12 ปี)
+  { minAge: 5, maxAge: 12, text: "พ่อแม่ให้ค่าขนมไปโรงเรียน", gold: 50, happiness: 5 },
+  { minAge: 5, maxAge: 12, text: "โดนเพื่อนล้อว่าหน้าตาตลก", looks: -5, happiness: -15 },
+  { minAge: 5, maxAge: 12, text: "คุณตั้งใจเรียนจนได้คะแนนเต็ม", smarts: 10, happiness: 10 },
+  { minAge: 5, maxAge: 12, text: "แอบกินขนมกรุบกรอบเยอะไป ฟันผุ", hp: -5, looks: -2 },
+
+  // 🛹 วัยรุ่น (13-17 ปี)
+  { minAge: 13, maxAge: 17, text: "สิวขึ้นเต็มหน้า เสียความมั่นใจสุดๆ", looks: -15, happiness: -10 },
+  { minAge: 13, maxAge: 17, text: "แอบชอบเพื่อนร่วมชั้น แต่เขาไม่สน", happiness: -15 },
+  { minAge: 13, maxAge: 17, text: "เริ่มทำงานพาร์ทไทม์หลังเลิกเรียน", gold: 300, smarts: 5 },
+  { minAge: 13, maxAge: 17, text: "สอบติดโรงเรียนชื่อดัง พ่อแม่ภูมิใจ", smarts: 15, happiness: 20 },
+
+  // 💼 วัยผู้ใหญ่ (18-59 ปี)
+  { minAge: 18, maxAge: 59, text: "คุณถูกลอตเตอรี่รางวัลเลขท้าย!", gold: 5000, happiness: 30 },
+  { minAge: 18, maxAge: 59, text: "คุณทำงานได้ดีเยี่ยม เจ้านายตบรางวัลให้", gold: 3000, happiness: 15 },
+  { minAge: 18, maxAge: 59, text: "ทำงานหนักเกินไปจนเป็นออฟฟิศซินโดรม", hp: -15, happiness: -10 },
+  { minAge: 18, maxAge: 59, text: "โดนแก๊งคอลเซ็นเตอร์หลอกโอนเงิน", gold: -2000, happiness: -20, smarts: -5 },
+  { minAge: 18, maxAge: 59, text: "บินไปทำศัลยกรรมที่เกาหลีใต้ ออกมาเป๊ะมาก!", looks: 30, gold: -5000, happiness: 20 },
+  { minAge: 18, maxAge: 59, text: "ทำศัลยกรรมคลินิกเถื่อน หมอกระเป๋าทำหน้าพัง!", looks: -40, hp: -20, gold: -1000 },
+  { minAge: 18, maxAge: 59, text: "ลงทุนในคริปโตแล้วติดดอย", gold: -3000, happiness: -15 },
+
+  // 🧓 วัยชรา (60+ ปี)
+  { minAge: 60, maxAge: 120, text: "ปวดหลังและข้อเข่าเสื่อมตามวัย", hp: -10, happiness: -5 },
+  { minAge: 60, maxAge: 120, text: "ลูกหลานมาเยี่ยมพร้อมให้เงินก้นถุง", happiness: 20, gold: 1000 },
+  { minAge: 60, maxAge: 120, text: "ลื่นล้มในห้องน้ำ กระดูกร้าว", hp: -30, happiness: -20 },
+  { minAge: 60, maxAge: 120, text: "เข้าวัดปฏิบัติธรรม จิตใจสงบ", happiness: 10, smarts: 5 },
+  { minAge: 60, maxAge: 120, text: "ตรวจพบโรคความดันและเบาหวาน", hp: -20 },
+
+  // 🌍 เหตุการณ์ทั่วไป (เจอได้ตั้งแต่ 5 ขวบขึ้นไป)
+  { minAge: 5, maxAge: 120, text: "เดินสะดุดก้อนหินหน้าฟาดพื้น", hp: -10, looks: -2 },
+  { minAge: 5, maxAge: 120, text: "กินอาหารริมทาง ท้องเสียหนักมาก", hp: -20, happiness: -10 },
+  { minAge: 5, maxAge: 120, text: "เก็บเงินได้ในกางเกงตัวเก่า", gold: 200, happiness: 5 },
+  { minAge: 5, maxAge: 120, text: "ดูสารคดีกาวๆ จนรู้สึกเบิกเนตร", smarts: 5, happiness: 5 },
+  { minAge: 5, maxAge: 120, text: "ไม่มีอะไรเกิดขึ้น ชีวิตเรียบง่ายและน่าเบื่อ", hp: 2, happiness: -2 }
 ];
 
 function getOrCreateLifeRoom(roomId) {
@@ -636,60 +666,76 @@ io.on("connection", (socket) => {
       if (room.status !== "waiting") return socket.emit("life_error", { message: "เขาเกิดกันไปหมดแล้ว รอชาติน้านะ!" });
       if (room.players.length >= room.maxPlayers) return socket.emit("life_error", { message: "ห้องคลอดเต็ม!" });
       
-      // 🎲 สุ่มสเตตัสตอนเกิด (RNG)
+      // 🎲 สุ่มสถานะครอบครัว
+      const familyStatus = ["ยากจนข้นแค้น", "ฐานะปานกลาง", "ร่ำรวยคาบช้อนเงินช้อนทอง"][Math.floor(Math.random() * 3)];
+      const startGold = familyStatus === "ร่ำรวยคาบช้อนเงินช้อนทอง" ? 500 : (familyStatus === "ยากจนข้นแค้น" ? 0 : 100);
+
       room.players.push({ 
-        id: socket.id, name: safeName, connected: true, isDead: false, age: 0, gold: 0,
+        id: socket.id, name: safeName, connected: true, isDead: false, age: 0, 
+        gold: startGold, 
         hp: 100, 
         happiness: 80, 
-        smarts: Math.floor(Math.random() * 60) + 20, // โง่หรือฉลาดแต่เกิด
-        looks: Math.floor(Math.random() * 60) + 20,  // หน้าตาดีหรือแย่แต่เกิด
-        log: ["👶 ถือกำเนิดขึ้นมาบนโลกอันโหดร้าย..."]
+        smarts: Math.floor(Math.random() * 60) + 20, 
+        looks: Math.floor(Math.random() * 60) + 20,
+        log: [`👶 ถือกำเนิดขึ้นมาในครอบครัว${familyStatus}`]
       });
     }
     socket.join(`life_${roomId}`); socket.data.lifeRoomId = roomId; broadcastLifeState(roomId);
   });
 
-  socket.on("start_life_game", ({ roomId }) => {
-    const room = lifeRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return;
-    room.status = "playing"; room.history = ["🌍 พระเจ้าระฆังเริ่มชีวิตแล้ว! กด Age Up เลย!"];
-    broadcastLifeState(roomId);
-  });
+  socket.on("start_life_game", ({ roomId }) => { const room = lifeRooms.get(roomId); if (!room || room.status !== "waiting" || room.hostId !== socket.id) return; room.status = "playing"; room.history = ["🌍 พระเจ้าระฆังเริ่มชีวิตแล้ว! กด Age Up เลย!"]; broadcastLifeState(roomId); });
 
   socket.on("age_up", ({ roomId }) => {
     const room = lifeRooms.get(roomId); if (!room || room.status !== "playing") return;
     const player = room.players.find(p => p.id === socket.id); if (!player || player.isDead) return;
     
-    player.age += 1;
+    player.age += 1; 
     let eventLog = `อายุ ${player.age} ปี: `;
+    let passiveLog = "";
     
-    // สุ่มเหตุการณ์
-    const randEvent = LIFE_EVENTS[Math.floor(Math.random() * LIFE_EVENTS.length)];
-    eventLog += randEvent.text;
-    
-    // อัปเดตสเตตัส
-    if(randEvent.hp) player.hp += randEvent.hp;
-    if(randEvent.happiness) player.happiness += randEvent.happiness;
-    if(randEvent.smarts) player.smarts += randEvent.smarts;
-    if(randEvent.looks) player.looks += randEvent.looks;
-    if(randEvent.gold) player.gold += randEvent.gold;
-    
-    // คุมสเตตัสให้อยู่ในกรอบ 0-100
-    player.happiness = Math.max(0, Math.min(100, player.happiness));
-    player.smarts = Math.max(0, Math.min(100, player.smarts));
-    player.looks = Math.max(0, Math.min(100, player.looks));
-    
-    // เช็คความตาย (HP หมด หรือแก่ตาย)
-    if(player.hp <= 0) {
-      player.hp = 0; player.isDead = true;
-      eventLog += " 💀 [เสียชีวิตแล้ว]";
-      room.history.unshift(`🪦 ${player.name} สิ้นใจในวัย ${player.age} ปี!`);
-    } else if (player.age >= 100) {
-       player.hp = 0; player.isDead = true;
-       eventLog += " 🕊️ [หมดอายุขัยตามธรรมชาติ]";
-       room.history.unshift(`🕊️ ${player.name} หมดอายุขัยอย่างสงบในวัย ${player.age} ปี`);
+    // 💼 ระบบรายได้รายปี (Passive Income)
+    if (player.age >= 18 && player.age <= 60) {
+      // เงินเดือนพื้นฐาน + โบนัสตามความฉลาด
+      const salary = 1000 + (player.smarts * 20); 
+      player.gold += salary;
+      passiveLog = ` [เงินเดือน +${salary}G]`;
+    } else if (player.age > 60) {
+      player.gold += 500;
+      passiveLog = ` [บำนาญชราภาพ +500G]`;
+      // คนแก่สุขภาพลดลงเรื่อยๆ ตามธรรมชาติ
+      player.hp -= (Math.floor(Math.random() * 5) + 2); 
     }
 
-    player.log.unshift(eventLog);
+    // 🎲 คัดกรองเหตุการณ์ที่ตรงกับช่วงอายุ
+    const validEvents = LIFE_EVENTS.filter(e => player.age >= e.minAge && player.age <= e.maxAge);
+    const randEvent = validEvents[Math.floor(Math.random() * validEvents.length)]; 
+    
+    eventLog += randEvent.text + passiveLog;
+    
+    // อัปเดตสเตตัสจากเหตุการณ์
+    if(randEvent.hp) player.hp += randEvent.hp; 
+    if(randEvent.happiness) player.happiness += randEvent.happiness; 
+    if(randEvent.smarts) player.smarts += randEvent.smarts; 
+    if(randEvent.looks) player.looks += randEvent.looks; 
+    if(randEvent.gold) player.gold += randEvent.gold;
+    
+    // คุมกรอบสเตตัส
+    player.happiness = Math.max(0, Math.min(100, player.happiness)); 
+    player.smarts = Math.max(0, Math.min(100, player.smarts)); 
+    player.looks = Math.max(0, Math.min(100, player.looks));
+    
+    // เช็คการตาย
+    if(player.hp <= 0) { 
+      player.hp = 0; player.isDead = true; 
+      eventLog += " 💀 [เสียชีวิตแล้ว]"; 
+      room.history.unshift(`🪦 ${player.name} สิ้นใจในวัย ${player.age} ปี!`); 
+    } else if (player.age >= 100) { 
+      player.hp = 0; player.isDead = true; 
+      eventLog += " 🕊️ [หมดอายุขัยตามธรรมชาติ]"; 
+      room.history.unshift(`🕊️ ${player.name} หมดอายุขัยอย่างสงบในวัย ${player.age} ปี`); 
+    }
+    
+    player.log.unshift(eventLog); 
     broadcastLifeState(roomId);
   });
 
