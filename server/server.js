@@ -82,6 +82,47 @@ function resolveKang(roomId, callerId) {
 // ==========================================
 const gachaRooms = new Map();
 
+// การ์ดกาชาปองในนรก (รวมทั้งปกติ + ใบพิเศษสุดปั่น)
+const GACHA_CARD_DEFS = [
+  // Lucky
+  { type: "jackpot", name: "JACKPOT!!", emoji: "💎", group: "lucky", reqTarget: false, count: 3 },
+  { type: "master_thief", name: "Master Thief", emoji: "🦹‍♂️", group: "lucky", reqTarget: false, count: 2 },
+  { type: "leech", name: "Leech", emoji: "🩸", group: "lucky", reqTarget: true, count: 3 },
+  { type: "robbery", name: "Robbery", emoji: "🔫", group: "lucky", reqTarget: true, count: 3 },
+  { type: "assassin", name: "Assassin", emoji: "🗡️", group: "lucky", reqTarget: true, count: 2 },
+  // Unlucky
+  { type: "bankruptcy", name: "Bankruptcy", emoji: "💣", group: "unlucky", reqTarget: false, count: 2 },
+  { type: "tax", name: "Tax Raid", emoji: "🧾", group: "unlucky", reqTarget: false, count: 3 },
+  { type: "fallen_angel", name: "Fallen Angel", emoji: "😈", group: "unlucky", reqTarget: false, count: 3 },
+  { type: "trip_grass", name: "Trip Grass", emoji: "🌿", group: "unlucky", reqTarget: false, count: 3 },
+  { type: "scapegoat", name: "Scapegoat", emoji: "🐐", group: "unlucky", reqTarget: true, count: 2 },
+  // Chaos
+  { type: "communist", name: "Communist Uprising", emoji: "☭", group: "chaos", reqTarget: false, count: 2 },
+  { type: "thanos", name: "Thanos Snap", emoji: "🧤", group: "chaos", reqTarget: false, count: 2 },
+  { type: "robin_hood", name: "Robin Hood", emoji: "🏹", group: "chaos", reqTarget: false, count: 2 },
+  { type: "wallet_swap", name: "Wallet Swap", emoji: "💼", group: "chaos", reqTarget: true, count: 2 },
+  // Normal ใบทั่วไป +/- ชิป
+  { type: "normal_plus", name: "Bonus Chips", emoji: "💰", group: "normal", reqTarget: false, count: 8 },
+  { type: "normal_minus", name: "Bad Luck", emoji: "💸", group: "normal", reqTarget: false, count: 8 }
+];
+
+function createGachaDeck() {
+  const deck = [];
+  for (const def of GACHA_CARD_DEFS) {
+    for (let i = 0; i < def.count; i++) {
+      deck.push({
+        type: def.type,
+        name: def.name,
+        emoji: def.emoji,
+        group: def.group,
+        reqTarget: def.reqTarget
+      });
+    }
+  }
+  // ใช้ฟังก์ชัน shuffle เดิมจาก SomomKang
+  return shuffle(deck);
+}
+
 function getOrCreateGachaRoom(roomId) {
   let room = gachaRooms.get(roomId);
   if (!room) {
@@ -92,9 +133,11 @@ function getOrCreateGachaRoom(roomId) {
       players: [],
       maxPlayers: 8,
       currentTurnIndex: null,
+      deck: [],
       deckCount: 0,
       lastCard: null,
       pendingCard: null,
+      pendingCardType: null,
       history: []
     };
     gachaRooms.set(roomId, room);
@@ -130,6 +173,190 @@ function broadcastGachaState(roomId) {
   if (!room) return;
   const state = buildGachaState(room);
   io.to(`gacha_${roomId}`).emit("gacha_state", state);
+}
+
+function getRichestPlayer(room) {
+  if (!room.players.length) return null;
+  return room.players.reduce((best, p) => (p.chips > best.chips ? p : best), room.players[0]);
+}
+
+function getPoorestPlayer(room) {
+  if (!room.players.length) return null;
+  return room.players.reduce((best, p) => (p.chips < best.chips ? p : best), room.players[0]);
+}
+
+function applyGachaEffect(room, sourcePlayer, targetPlayer, cardType) {
+  const players = room.players;
+  let log = "";
+  let desc = "";
+  let val = 0;
+
+  const safeTake = (from, amount) => {
+    const real = Math.max(0, Math.min(from.chips, amount));
+    from.chips -= real;
+    return real;
+  };
+
+  switch (cardType) {
+    case "jackpot": {
+      val = 1000;
+      sourcePlayer.chips += val;
+      desc = `ได้รับชิป ${val} 💰`;
+      log = `${sourcePlayer.name} เปิด JACKPOT! +${val} ชิป`;
+      break;
+    }
+    case "master_thief": {
+      const richest = getRichestPlayer(room);
+      if (!richest || richest.id === sourcePlayer.id) {
+        desc = "พยายามจะขโมยแต่ไม่มีใครรวยกว่า...";
+        log = `${sourcePlayer.name} พยายามเป็น Master Thief แต่ล้มเหลว`;
+        break;
+      }
+      const steal = safeTake(richest, 500);
+      sourcePlayer.chips += steal;
+      val = steal;
+      desc = `ขโมยชิป ${steal} จาก ${richest.name}`;
+      log = `${sourcePlayer.name} เป็น Master Thief! ขโมย ${steal} ชิป จาก ${richest.name}`;
+      break;
+    }
+    case "leech": {
+      if (!targetPlayer) break;
+      const steal = safeTake(targetPlayer, 300);
+      sourcePlayer.chips += steal;
+      val = steal;
+      desc = `ดูดชิป ${steal} จาก ${targetPlayer.name}`;
+      log = `${sourcePlayer.name} ดูดชิป ${steal} จาก ${targetPlayer.name}`;
+      break;
+    }
+    case "robbery": {
+      if (!targetPlayer) break;
+      const steal = safeTake(targetPlayer, Math.floor(targetPlayer.chips / 2));
+      sourcePlayer.chips += steal;
+      val = steal;
+      desc = `ปล้น ${targetPlayer.name} ได้ ${steal} ชิป`;
+      log = `${sourcePlayer.name} ปล้น ${targetPlayer.name}! ได้ไป ${steal} ชิป`;
+      break;
+    }
+    case "assassin": {
+      if (!targetPlayer) break;
+      const lost = safeTake(targetPlayer, 500);
+      val = -lost;
+      desc = `ลอบสังหารกระเป๋า ${targetPlayer.name} หายไป ${lost} ชิป`;
+      log = `${sourcePlayer.name} ส่งนักฆ่าเก็บ ${targetPlayer.name} (-${lost} ชิป)`;
+      break;
+    }
+    case "bankruptcy": {
+      const before = sourcePlayer.chips;
+      sourcePlayer.chips = 100;
+      val = sourcePlayer.chips - before;
+      desc = `ล้มละลาย เหลือชิปแค่ 100 💀`;
+      log = `${sourcePlayer.name} ล้มละลาย! เหลือชิป 100 เดียว`;
+      break;
+    }
+    case "tax": {
+      let totalPaid = 0;
+      for (const p of players) {
+        if (p.id === sourcePlayer.id) continue;
+        if (sourcePlayer.chips <= 0) break;
+        const paid = safeTake(sourcePlayer, 100);
+        p.chips += paid;
+        totalPaid += paid;
+      }
+      val = -totalPaid;
+      desc = `จ่ายภาษีรวม ${totalPaid} ชิป ให้คนอื่นทั้งโต๊ะ`;
+      log = `${sourcePlayer.name} ถูกสรรพากรบุก! จ่ายภาษีรวม ${totalPaid} ชิป`;
+      break;
+    }
+    case "fallen_angel": {
+      const before = sourcePlayer.chips;
+      sourcePlayer.chips = Math.floor(sourcePlayer.chips / 2);
+      val = sourcePlayer.chips - before;
+      desc = `จากเทพกลายเป็นตกสวรรค์ เหลือครึ่งเดียว`;
+      log = `${sourcePlayer.name} ตกสวรรค์! ชิปหายไปครึ่งหนึ่ง`;
+      break;
+    }
+    case "trip_grass": {
+      const lost = safeTake(sourcePlayer, 500);
+      val = -lost;
+      desc = `สะดุดหญ้ากาว ล้มเสียชิป ${lost}`;
+      log = `${sourcePlayer.name} สะดุดหญ้ากาว! เสียไป ${lost} ชิป`;
+      break;
+    }
+    case "scapegoat": {
+      if (!targetPlayer) break;
+      const give = safeTake(sourcePlayer, 500);
+      targetPlayer.chips += give;
+      val = -give;
+      desc = `ถูกบังคับให้เป็นแพะ รับกรรมให้ ${targetPlayer.name} จำนวน ${give} ชิป`;
+      log = `${sourcePlayer.name} กลายเป็นแพะ ส่ง ${give} ชิป ให้ ${targetPlayer.name}`;
+      break;
+    }
+    case "communist": {
+      const total = players.reduce((sum, p) => sum + p.chips, 0);
+      const avg = Math.floor(total / players.length || 0);
+      players.forEach((p) => {
+        p.chips = avg;
+      });
+      desc = `แดงทั้งโต๊ะ แบ่งชิปเท่าๆ กันคนละ ${avg}`;
+      log = `พลังคอมมิวนิสต์! ทุกคนมีชิปเท่ากันคนละ ${avg}`;
+      break;
+    }
+    case "thanos": {
+      const chipsArr = players.map((p) => p.chips);
+      const shuffled = shuffle(chipsArr.slice());
+      players.forEach((p, idx) => {
+        p.chips = shuffled[idx];
+      });
+      desc = `ดีดนิ้วสลับโชค ชิปทุกคนถูกสลับตำแหน่ง`;
+      log = `Thanos ดีดนิ้ว! ชิปทุกคนถูกสลับกันมั่วไปหมด`;
+      break;
+    }
+    case "robin_hood": {
+      const richest = getRichestPlayer(room);
+      const poorest = getPoorestPlayer(room);
+      if (!richest || !poorest || richest.id === poorest.id) {
+        desc = `ไม่มีใครให้ปล้นหรือให้ จึงไม่เกิดอะไรขึ้น`;
+        log = `Robin Hood โผล่มาแต่จับเหยื่อไม่ได้`;
+        break;
+      }
+      const give = safeTake(richest, 500);
+      poorest.chips += give;
+      val = give;
+      desc = `ปล้นคนรวย ${richest.name} ${give} ชิป ไปให้คนจน ${poorest.name}`;
+      log = `Robin Hood ปล้น ${richest.name} ${give} ชิป ไปแจก ${poorest.name}`;
+      break;
+    }
+    case "wallet_swap": {
+      if (!targetPlayer) break;
+      const tmp = sourcePlayer.chips;
+      sourcePlayer.chips = targetPlayer.chips;
+      targetPlayer.chips = tmp;
+      desc = `สลับกระเป๋าชิปกับ ${targetPlayer.name} แบบเนียนๆ`;
+      log = `${sourcePlayer.name} สลับกระเป๋ากับ ${targetPlayer.name}!`;
+      break;
+    }
+    case "normal_plus": {
+      const gain = 100 + Math.floor(Math.random() * 401); // 100-500
+      sourcePlayer.chips += gain;
+      val = gain;
+      desc = `ดวงดีเล็กน้อย ได้ชิปเพิ่ม ${gain}`;
+      log = `${sourcePlayer.name} ดวงดี ได้ +${gain} ชิป`;
+      break;
+    }
+    case "normal_minus": {
+      const lost = safeTake(sourcePlayer, 100 + Math.floor(Math.random() * 401)); // 100-500
+      val = -lost;
+      desc = `ซวยเบาๆ เสียชิป ${lost}`;
+      log = `${sourcePlayer.name} ซวย เสียไป ${lost} ชิป`;
+      break;
+    }
+    default: {
+      desc = "ไม่มีอะไรเกิดขึ้น... (บั๊กหรือเปล่าเนี่ย)";
+      log = `${sourcePlayer.name} เปิดการ์ดลึกลับ แต่ดูเหมือนยังไม่ทำอะไร`;
+    }
+  }
+
+  return { desc, log, val };
 }
 
 // ==========================================
@@ -374,11 +601,13 @@ io.on("connection", (socket) => {
       return;
     }
 
+    room.deck = createGachaDeck();
+    room.deckCount = room.deck.length;
     room.status = "playing";
     room.currentTurnIndex = 0;
-    room.deckCount = 30;
     room.lastCard = null;
     room.pendingCard = null;
+    room.pendingCardType = null;
     room.history = [];
     console.log("[Gacha][Server] start_gacha -> broadcasting state", {
       roomId,
@@ -390,7 +619,7 @@ io.on("connection", (socket) => {
 
   socket.on("draw_gacha", ({ roomId }) => {
     const room = gachaRooms.get(roomId);
-    if (!room || room.status !== "playing" || room.deckCount <= 0) {
+    if (!room || room.status !== "playing" || room.deckCount <= 0 || !room.deck || !room.deck.length) {
       console.warn("[Gacha][Server] draw_gacha rejected", {
         socketId: socket.id,
         roomExists: !!room,
@@ -412,29 +641,59 @@ io.on("connection", (socket) => {
     }
     const player = room.players[playerIndex];
 
-    const delta = Math.floor(Math.random() * 801) - 400; // -400 .. 400
-    const gained = delta >= 0;
+    const drawn = room.deck.shift();
+    room.deckCount = room.deck.length;
 
-    if (delta !== 0) {
-      player.chips += delta;
+    if (!drawn) {
+      room.status = "ended";
+      broadcastGachaState(roomId);
+      return;
     }
 
+    const cardId = `gacha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // การ์ดที่ต้องเลือกเป้าหมาย -> เข้าสถานะ waiting_target ก่อน
+    if (drawn.reqTarget) {
+      room.status = "waiting_target";
+      room.pendingCardType = drawn.type;
+      room.pendingCard = {
+        id: cardId,
+        name: drawn.name,
+        emoji: drawn.emoji,
+        desc: "การ์ดใบนี้ต้องเลือกเหยื่อ 1 คนให้รับกรรม...",
+        player: player.name,
+        log: "",
+        type: drawn.type,
+        val: 0
+      };
+      room.lastCard = room.pendingCard;
+
+      console.log("[Gacha][Server] draw_gacha drew target card", {
+        roomId,
+        playerId: player.id,
+        type: drawn.type
+      });
+
+      broadcastGachaState(roomId);
+      return;
+    }
+
+    // การ์ดที่ไม่ต้องเลือกเป้า -> ใช้เอฟเฟกต์ทันที
+    const effect = applyGachaEffect(room, player, null, drawn.type);
+
     const card = {
-      id: `gacha-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: gained ? "โชคดี!" : "ซวยจัด!",
-      emoji: gained ? "🎁" : "💀",
-      desc: gained ? `ได้รับชิป ${delta} 💰` : `เสียชิป ${-delta} 💰`,
+      id: cardId,
+      name: drawn.name,
+      emoji: drawn.emoji,
+      desc: effect.desc,
       player: player.name,
-      log: gained
-        ? `${player.name} เปิดได้ +${delta} ชิป` 
-        : `${player.name} เปิดได้ -${-delta} ชิป`,
-      type: "normal",
-      val: delta
+      log: effect.log,
+      type: drawn.type === "normal_plus" || drawn.type === "normal_minus" ? "normal" : drawn.type,
+      val: effect.val
     };
 
     room.lastCard = card;
     room.history = [card.log, ...room.history].slice(0, 100);
-    room.deckCount = Math.max(0, room.deckCount - 1);
 
     if (room.deckCount === 0) {
       room.status = "ended";
@@ -447,7 +706,7 @@ io.on("connection", (socket) => {
     console.log("[Gacha][Server] draw_gacha -> broadcasting state", {
       roomId,
       playerId: player.id,
-      delta,
+      type: card.type,
       deckCount: room.deckCount,
       nextTurnIndex: room.currentTurnIndex
     });
@@ -460,15 +719,72 @@ io.on("connection", (socket) => {
 
     room.status = "waiting";
     room.currentTurnIndex = null;
+    room.deck = [];
     room.deckCount = 0;
     room.lastCard = null;
     room.pendingCard = null;
+    room.pendingCardType = null;
     room.history = [];
 
     console.log("[Gacha][Server] reset_gacha -> broadcasting state", {
       roomId,
       players: room.players.length
     });
+    broadcastGachaState(roomId);
+  });
+
+  socket.on("resolve_gacha_target", ({ roomId, targetId }) => {
+    const room = gachaRooms.get(roomId);
+    if (!room || room.status !== "waiting_target" || room.pendingCardType == null || !room.pendingCard) return;
+
+    const currentIndex = room.currentTurnIndex != null ? room.currentTurnIndex : -1;
+    if (currentIndex === -1) return;
+
+    const sourcePlayer = room.players[currentIndex];
+    if (!sourcePlayer || sourcePlayer.id !== socket.id) return;
+
+    let targetPlayer = null;
+    if (targetId === "random") {
+      const candidates = room.players.filter((p) => p.id !== sourcePlayer.id);
+      if (candidates.length > 0) {
+        const idx = Math.floor(Math.random() * candidates.length);
+        targetPlayer = candidates[idx];
+      }
+    } else {
+      targetPlayer = room.players.find((p) => p.id === targetId) || null;
+    }
+
+    if (!targetPlayer) return;
+
+    const effect = applyGachaEffect(room, sourcePlayer, targetPlayer, room.pendingCardType);
+
+    const resolvedCard = {
+      ...room.pendingCard,
+      desc: effect.desc,
+      log: effect.log,
+      type: room.pendingCardType === "normal_plus" || room.pendingCardType === "normal_minus" ? "normal" : room.pendingCardType,
+      val: effect.val
+    };
+
+    room.lastCard = resolvedCard;
+    room.history = [resolvedCard.log, ...room.history].slice(0, 100);
+    room.pendingCard = null;
+    room.pendingCardType = null;
+    room.status = room.deckCount === 0 ? "ended" : "playing";
+
+    if (room.status === "playing") {
+      const nextIndex =
+        room.players.length > 0 ? (currentIndex + 1) % room.players.length : null;
+      room.currentTurnIndex = nextIndex;
+    }
+
+    console.log("[Gacha][Server] resolve_gacha_target -> broadcasting state", {
+      roomId,
+      sourceId: sourcePlayer.id,
+      targetId: targetPlayer.id,
+      type: resolvedCard.type
+    });
+
     broadcastGachaState(roomId);
   });
 
