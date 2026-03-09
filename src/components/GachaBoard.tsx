@@ -15,10 +15,13 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
   const [gameState, setGameState] = useState<GachaState | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showSoundHint, setShowSoundHint] = useState(true);
-  const [isConnected, setIsConnected] = useState(false); 
   
   const lastCardIdRef = useRef<string | null>(null);
   const hasInteractedRef = useRef(false);
+  
+  // 🔥 ล็อกชื่อผู้เล่นไว้ใน Ref เพื่อป้องกันการตัดเน็ตตอนชื่ออัปเดต!
+  const usernameRef = useRef(username);
+  useEffect(() => { usernameRef.current = username; }, [username]);
 
   const audioDraw = useRef<HTMLAudioElement>(null);
   const audioEvil = useRef<HTMLAudioElement>(null);
@@ -48,7 +51,16 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
     const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000");
     setSocket(s);
 
-    // 🔥 1. "ใส่หูฟัง" เตรียมรับข้อมูลจากเซิร์ฟเวอร์ก่อนเลย
+    // 🔥 สร้างฟังก์ชันเข้าห้องที่มั่นคงที่สุด
+    const attemptJoin = () => {
+      const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
+      s.emit("join_gacha_room", { roomId, username: usernameRef.current, maxPlayers });
+    };
+
+    // รอให้ต่อเน็ตติดชัวร์ๆ ค่อยเคาะประตูเข้าห้อง
+    s.on("connect", attemptJoin);
+    if (s.connected) attemptJoin(); // เผื่อกรณีที่มันต่อติดไปก่อนหน้าแล้ว
+
     s.on("gacha_state", (state: GachaState) => {
       setGameState(state);
       
@@ -76,34 +88,17 @@ export default function GachaBoard({ roomId, username }: { roomId: string; usern
 
     s.on("gacha_error", (msg) => { alert(msg.message); router.push("/"); });
 
-    // 🔥 2. "ตะโกน" ขอเข้าห้องเฉพาะตอนที่เน็ตเชื่อมต่อติดแล้วชัวร์ๆ เท่านั้น!
-    s.on("connect", () => {
-      setIsConnected(true);
-      const maxPlayers = parseInt(sessionStorage.getItem("gacha_maxPlayers") || "8");
-      s.emit("join_gacha_room", { roomId, username, maxPlayers });
-    });
-
-    s.on("disconnect", () => setIsConnected(false));
-
+    // 🔥 เอา username ออกจากวงเล็บนี้ เพื่อไม่ให้มันสั่งตัดเน็ตเวลารีเฟรชชื่อ!
     return () => { s.disconnect(); };
-  }, [roomId, username, router]); 
+  }, [roomId, router]); 
 
-  // หน้าจอโหลดจับชีพจร
+  // หน้าจอโหลดที่สะอาดและปลอดภัยที่สุด
   if (!gameState || !socket) return (
     <div className="min-h-dvh flex flex-col items-center justify-center bg-purple-950 text-white font-sans text-center px-4">
       <div className="text-8xl mb-6 animate-spin">🔮</div>
       <h2 className="text-3xl font-bold animate-pulse text-purple-300 mb-4">
-        {isConnected ? "เชื่อมต่อสำเร็จ! กำลังจัดโต๊ะ..." : "กำลังปลุกสมองกลให้ตื่น..."}
+        กำลังจัดโต๊ะไพ่นรก...
       </h2>
-      {!isConnected && (
-        <div className="max-w-lg bg-black/40 p-6 rounded-2xl border border-purple-500/50 shadow-lg text-left">
-          <h3 className="text-yellow-400 font-bold mb-2">💡 โค้ชขอรายงานสถานการณ์:</h3>
-          <ul className="text-sm text-gray-300 space-y-2 list-disc pl-4">
-            <li>ตอนนี้หน้าเว็บอัปเดตเสร็จแล้ว แต่ <b>Server (สมองกล)</b> กำลังรีสตาร์ทตัวเองอยู่ครับ</li>
-            <li>ปกติจะใช้เวลาประมาณ <b>2 ถึง 4 นาที</b> ในการตื่นขึ้นมา</li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 
