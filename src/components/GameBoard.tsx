@@ -25,6 +25,9 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
   
   const [gotFlowed, setGotFlowed] = useState(false);
   const [recentFlowPlayerId, setRecentFlowPlayerId] = useState<string | null>(null);
+  
+  // ✨ เพิ่ม State สำหรับจำ "หน้าเหยื่อ" ที่โดนไหล
+  const [recentVictimId, setRecentVictimId] = useState<string | null>(null);
 
   const [isMuted, setIsMuted] = useState(true);
   const isMutedRef = useRef(isMuted); 
@@ -66,9 +69,15 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
       setTimeout(() => setGotFlowed(false), 3000);
     });
 
-    s.on("player_flowed", ({ playerId }) => {
+    // ✨ รับรู้ทั้งคนไหลและเหยื่อ
+    s.on("player_flowed", ({ playerId, victimId }) => {
       setRecentFlowPlayerId(playerId);
-      setTimeout(() => setRecentFlowPlayerId(null), 3000);
+      if (victimId) setRecentVictimId(victimId);
+      
+      setTimeout(() => {
+        setRecentFlowPlayerId(null);
+        setRecentVictimId(null);
+      }, 3000); // ประจาน 3 วินาที
     });
 
     return () => { s.disconnect(); };
@@ -229,6 +238,7 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             {opponents.map((p) => (
               <div key={p.id} className={`flex flex-col items-center transition-all duration-300 ${gameState.currentTurnPlayerId === p.id ? "scale-110 drop-shadow-[0_0_20px_gold]" : "opacity-80"} relative`}>
                 
+                {/* 🌊 ป้ายประจานคนไหล */}
                 <AnimatePresence>
                   {recentFlowPlayerId === p.id && (
                     <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: -20, opacity: 1 }} exit={{ opacity: 0 }} className="absolute -top-10 z-50 bg-purple-600 text-white px-4 py-1 rounded-full font-black text-sm border-2 border-white shadow-[0_0_15px_purple] animate-bounce whitespace-nowrap">
@@ -240,7 +250,22 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
                 <div className={`px-3 py-1 rounded-full text-xs sm:text-sm font-bold mb-2 border ${gameState.currentTurnPlayerId === p.id ? "bg-gold text-black border-yellow-300 shadow-[0_0_15px_gold]" : "bg-black/60 text-white border-white/20"} flex items-center gap-2`}>
                   {p.name} <span className={gameState.currentTurnPlayerId === p.id ? "text-black" : "text-gold"}>💰{p.chips}</span>
                 </div>
+                
                 <div className="w-12 h-16 sm:w-16 sm:h-24 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-gradient-to-br from-red-800 to-red-950 rounded-xl border-2 border-gold/50 shadow-xl flex items-center justify-center relative">
+                  
+                  {/* 😿 มีมประจานเหยื่อโดนไหล! (แปะทับหน้าเพื่อนคู่แข่ง) */}
+                  <AnimatePresence>
+                    {recentVictimId === p.id && (
+                      <motion.img 
+                        src="/mock-kang.jpg" 
+                        alt="โดนไหล"
+                        animate={{ x: [-3, 3, -3, 3, 0], y: [-3, 3, -3, 3, 0], rotate: [-10, 10, -10, 10, 0] }}
+                        transition={{ repeat: Infinity, duration: 0.1 }}
+                        className="absolute inset-0 w-full h-full rounded-xl border-4 border-red-500 shadow-[0_0_30px_red] z-[999] object-cover pointer-events-none"
+                      />
+                    )}
+                  </AnimatePresence>
+
                   <div className="w-8 h-12 sm:w-10 sm:h-16 border border-gold/30 rounded-lg"></div>
                   <div className="absolute -bottom-2 -right-2 bg-black text-white w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-black border-2 border-gold shadow-lg">
                     {p.handCount}
@@ -283,6 +308,19 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
               )}
             </AnimatePresence>
 
+            {/* 😿 ถ้าเราโดนไหลเอง เอารูปมาแปะตรงกลางจอด้วยเลย! */}
+            <AnimatePresence>
+              {recentVictimId === socket.id && (
+                <motion.img 
+                  src="/ชื่อรูปของพี่บอมใส่ตรงนี้นะ.jpg" 
+                  alt="โดนไหล"
+                  animate={{ x: [-3, 3, -3, 3, 0], y: [-3, 3, -3, 3, 0], rotate: [-10, 10, -10, 10, 0] }}
+                  transition={{ repeat: Infinity, duration: 0.1 }}
+                  className="absolute -top-40 z-[999] w-32 h-32 rounded-full border-4 border-red-500 shadow-[0_0_50px_red] object-cover pointer-events-none"
+                />
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {isMyTurn && !recentFlowPlayerId && (
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute -top-16 sm:-top-20 text-center z-30">
@@ -322,7 +360,6 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
         </div>
       )}
 
-      {/* หน้าจอสรุปผล */}
       {gameState.status === "ended" && gameState.endedGameData && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 overflow-y-auto">
           <motion.div initial={{ scale: 0.8, opacity: 0, rotateX: 20 }} animate={{ scale: 1, opacity: 1, rotateX: 0 }} className="bg-gradient-to-b from-gray-900 to-black border-4 border-gold rounded-3xl p-6 sm:p-10 max-w-3xl w-full shadow-[0_0_80px_rgba(250,204,21,0.4)] my-auto relative overflow-hidden">
@@ -341,43 +378,26 @@ export default function GameBoard({ roomId, username }: { roomId: string; userna
             </div>
 
             <div className="space-y-4 relative z-10">
-              {gameState.endedGameData.players.map((p: any) => {
-                // 💥 เช็คว่าคนนี้โดนแคง/เสียชิปเพราะแคงใช่ไหม?
-                const isLoserFromKang = p.roundChipsChange < 0 && (gameState.endedGameData.endGameReason === "kang" || gameState.endedGameData.endGameReason === "kang_shipwreck");
-
-                return (
-                  <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4 relative`}>
-                    
-                    {/* 😿 มีมประจานคนโดนแคง! (JPEG สั่นยุกยิก) */}
-                    {isLoserFromKang && (
-                      <motion.img 
-                        src="mock-kang.jpg" 
-                        alt="โดนแคง"
-                        animate={{ x: [-2, 2, -2, 2, 0], y: [-2, 2, -2, 2, 0], rotate: [-5, 5, -5, 5, 0] }}
-                        transition={{ repeat: Infinity, duration: 0.1 }}
-                        className="absolute -top-3 -left-3 sm:-top-5 sm:-left-5 w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-red-500 shadow-[0_0_15px_red] z-20 object-cover pointer-events-none"
-                      />
-                    )}
-
-                    <div className="text-center sm:text-left min-w-[120px]">
-                      <span className="font-black text-xl text-white block">{p.name}</span>
-                      <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
-                    </div>
-                    
-                    <div className="flex gap-[-10px] sm:gap-[-5px]">
-                      {p.hand.map((c: Card, i: number) => (
-                        <div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">
-                          {renderCard(c, false)}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
-                      {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
-                    </div>
+              {gameState.endedGameData.players.map((p: any) => (
+                <div key={p.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl border-2 ${p.id === gameState.endedGameData.winnerId ? "bg-gradient-to-r from-gold/30 to-black border-gold shadow-[0_0_20px_rgba(250,204,21,0.2)]" : "bg-black/80 border-white/10"} gap-4`}>
+                  <div className="text-center sm:text-left min-w-[120px]">
+                    <span className="font-black text-xl text-white block">{p.name}</span>
+                    <span className="text-xs sm:text-sm text-gold font-bold bg-black/50 px-3 py-1 rounded-full mt-1 inline-block border border-gold/30">แต้มรวม: {p.points}</span>
                   </div>
-                );
-              })}
+                  
+                  <div className="flex gap-[-10px] sm:gap-[-5px]">
+                    {p.hand.map((c: Card, i: number) => (
+                      <div key={i} className="-ml-6 sm:-ml-4 scale-[0.6] transform origin-center hover:z-20 hover:scale-75 transition-all">
+                        {renderCard(c, false)}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={`font-black text-2xl sm:text-3xl px-4 py-2 rounded-xl bg-black/50 border ${p.roundChipsChange > 0 ? "text-green-400 border-green-500/50" : p.roundChipsChange < 0 ? "text-red-500 border-red-500/50" : "text-gray-400 border-gray-500/50"}`}>
+                    {p.roundChipsChange > 0 ? `+${p.roundChipsChange}` : p.roundChipsChange}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {isHost && (
