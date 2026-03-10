@@ -285,60 +285,53 @@ function broadcastRacingState(roomId) {
 // ==========================================
 const lifeRooms = new Map();
 
-// ฐานข้อมูลเหตุการณ์สุ่มแบ่งตามช่วงอายุ (Age-gated Events)
+// ฐานข้อมูลเหตุการณ์แบบมี Type สำหรับจิตวิทยาสี
 const LIFE_EVENTS = [
   // 🍼 ทารก & วัยเด็กตอนต้น (0-4 ปี)
-  { minAge: 0, maxAge: 4, text: "คุณพูดคำแรกได้สำเร็จ พ่อแม่ดีใจมาก", happiness: 10, smarts: 5 },
-  { minAge: 0, maxAge: 4, text: "คุณพยายามเดินแล้วล้มหน้าฟาดพื้น ร้องไห้จ้า", hp: -5, happiness: -10 },
-  { minAge: 0, maxAge: 4, text: "คุณอึใส่กางเกงแล้วหัวเราะชอบใจ", happiness: 5 },
-  { minAge: 0, maxAge: 4, text: "ติดไวรัส RSV จากเนอสเซอรี่", hp: -15, happiness: -10 },
+  { minAge: 0, maxAge: 4, text: "คุณพูดคำแรกได้สำเร็จ พ่อแม่ดีใจมาก", happiness: 10, smarts: 5, type: "positive" },
+  { minAge: 0, maxAge: 4, text: "คุณพยายามเดินแล้วล้มหน้าฟาดพื้น ร้องไห้จ้า", hp: -5, happiness: -10, type: "negative" },
+  { minAge: 0, maxAge: 4, text: "คุณอึใส่กางเกงแล้วหัวเราะชอบใจ", happiness: 5, type: "mystery" },
+  { minAge: 0, maxAge: 4, text: "ติดไวรัส RSV จากเนอสเซอรี่", hp: -15, happiness: -10, type: "negative" },
 
   // 🎒 วัยเด็ก (5-12 ปี)
-  { minAge: 5, maxAge: 12, text: "พ่อแม่ให้ค่าขนมไปโรงเรียน", gold: 50, happiness: 5 },
-  { minAge: 5, maxAge: 12, text: "โดนเพื่อนล้อว่าหน้าตาตลก", looks: -5, happiness: -15 },
-  { minAge: 5, maxAge: 12, text: "คุณตั้งใจเรียนจนได้คะแนนเต็ม", smarts: 10, happiness: 10 },
-  { minAge: 5, maxAge: 12, text: "แอบกินขนมกรุบกรอบเยอะไป ฟันผุ", hp: -5, looks: -2 },
+  { minAge: 5, maxAge: 12, text: "พ่อแม่ให้ค่าขนมไปโรงเรียน", gold: 50, happiness: 5, type: "positive" },
+  { minAge: 5, maxAge: 12, text: "โดนเพื่อนล้อว่าหน้าตาตลก", looks: -5, happiness: -15, type: "negative" },
+  { minAge: 5, maxAge: 12, text: "คุณตั้งใจเรียนจนได้คะแนนเต็ม", smarts: 10, happiness: 10, type: "neutral" },
+  { minAge: 5, maxAge: 12, text: "แอบกินขนมกรุบกรอบเยอะไป ฟันผุ", hp: -5, looks: -2, type: "negative" },
 
   // 🛹 วัยรุ่น (13-17 ปี)
-  { minAge: 13, maxAge: 17, text: "สิวขึ้นเต็มหน้า เสียความมั่นใจสุดๆ", looks: -15, happiness: -10 },
-  { minAge: 13, maxAge: 17, text: "แอบชอบเพื่อนร่วมชั้น แต่เขาไม่สน", happiness: -15 },
-  { minAge: 13, maxAge: 17, text: "เริ่มทำงานพาร์ทไทม์หลังเลิกเรียน", gold: 300, smarts: 5 },
-  { minAge: 13, maxAge: 17, text: "สอบติดโรงเรียนชื่อดัง พ่อแม่ภูมิใจ", smarts: 15, happiness: 20 },
+  { minAge: 13, maxAge: 17, text: "สิวขึ้นเต็มหน้า เสียความมั่นใจสุดๆ", looks: -15, happiness: -10, type: "negative" },
+  { minAge: 13, maxAge: 17, text: "แอบชอบเพื่อนร่วมชั้น แต่เขาไม่สน", happiness: -15, type: "negative" },
+  { minAge: 13, maxAge: 17, text: "เริ่มทำงานพาร์ทไทม์หลังเลิกเรียน", gold: 300, smarts: 5, type: "neutral" },
+  { minAge: 13, maxAge: 17, text: "สอบติดโรงเรียนชื่อดัง พ่อแม่ภูมิใจ", smarts: 15, happiness: 20, type: "positive" },
 
   // 💼 วัยผู้ใหญ่ (18-59 ปี)
-  { minAge: 18, maxAge: 59, text: "คุณถูกลอตเตอรี่รางวัลเลขท้าย!", gold: 5000, happiness: 30 },
-  { minAge: 18, maxAge: 59, text: "คุณทำงานได้ดีเยี่ยม เจ้านายตบรางวัลให้", gold: 3000, happiness: 15 },
-  { minAge: 18, maxAge: 59, text: "ทำงานหนักเกินไปจนเป็นออฟฟิศซินโดรม", hp: -15, happiness: -10 },
-  { minAge: 18, maxAge: 59, text: "โดนแก๊งคอลเซ็นเตอร์หลอกโอนเงิน", gold: -2000, happiness: -20, smarts: -5 },
-  { minAge: 18, maxAge: 59, text: "บินไปทำศัลยกรรมที่เกาหลีใต้ ออกมาเป๊ะมาก!", looks: 30, gold: -5000, happiness: 20 },
-  { minAge: 18, maxAge: 59, text: "ทำศัลยกรรมคลินิกเถื่อน หมอกระเป๋าทำหน้าพัง!", looks: -40, hp: -20, gold: -1000 },
-  { minAge: 18, maxAge: 59, text: "ลงทุนในคริปโตแล้วติดดอย", gold: -3000, happiness: -15 },
+  { minAge: 18, maxAge: 59, text: "คุณถูกลอตเตอรี่รางวัลเลขท้าย!", gold: 5000, happiness: 30, type: "positive" },
+  { minAge: 18, maxAge: 59, text: "คุณทำงานได้ดีเยี่ยม เจ้านายตบรางวัลให้", gold: 3000, happiness: 15, type: "positive" },
+  { minAge: 18, maxAge: 59, text: "ทำงานหนักเกินไปจนเป็นออฟฟิศซินโดรม", hp: -15, happiness: -10, type: "negative" },
+  { minAge: 18, maxAge: 59, text: "โดนแก๊งคอลเซ็นเตอร์หลอกโอนเงิน", gold: -2000, happiness: -20, smarts: -5, type: "negative" },
+  { minAge: 18, maxAge: 59, text: "บินไปทำศัลยกรรมที่เกาหลีใต้ ออกมาเป๊ะมาก!", looks: 30, hp: -5, gold: -5000, happiness: 20, type: "positive" },
+  { minAge: 18, maxAge: 59, text: "ทำศัลยกรรมคลินิกเถื่อน หมอกระเป๋าทำหน้าพัง!", looks: -40, hp: -20, gold: -1000, type: "negative" },
+  { minAge: 18, maxAge: 59, text: "ลงทุนในคริปโตแล้วติดดอย", gold: -3000, happiness: -15, type: "negative" },
+  { minAge: 18, maxAge: 59, text: "ค้นพบความหมายของชีวิตจากการนั่งสมาธิ", smarts: 15, happiness: 15, type: "mystery" },
 
   // 🧓 วัยชรา (60+ ปี)
-  { minAge: 60, maxAge: 120, text: "ปวดหลังและข้อเข่าเสื่อมตามวัย", hp: -10, happiness: -5 },
-  { minAge: 60, maxAge: 120, text: "ลูกหลานมาเยี่ยมพร้อมให้เงินก้นถุง", happiness: 20, gold: 1000 },
-  { minAge: 60, maxAge: 120, text: "ลื่นล้มในห้องน้ำ กระดูกร้าว", hp: -30, happiness: -20 },
-  { minAge: 60, maxAge: 120, text: "เข้าวัดปฏิบัติธรรม จิตใจสงบ", happiness: 10, smarts: 5 },
-  { minAge: 60, maxAge: 120, text: "ตรวจพบโรคความดันและเบาหวาน", hp: -20 },
+  { minAge: 60, maxAge: 120, text: "ปวดหลังและข้อเข่าเสื่อมตามวัย", hp: -10, happiness: -5, type: "negative" },
+  { minAge: 60, maxAge: 120, text: "ลูกหลานมาเยี่ยมพร้อมให้เงินก้นถุง", happiness: 20, gold: 1000, type: "positive" },
+  { minAge: 60, maxAge: 120, text: "ลื่นล้มในห้องน้ำ กระดูกร้าว", hp: -30, happiness: -20, type: "negative" },
+  { minAge: 60, maxAge: 120, text: "เข้าวัดปฏิบัติธรรม จิตใจสงบ", happiness: 10, smarts: 5, type: "neutral" },
+  { minAge: 60, maxAge: 120, text: "ตรวจพบโรคความดันและเบาหวาน", hp: -20, type: "negative" },
 
   // 🌍 เหตุการณ์ทั่วไป (เจอได้ตั้งแต่ 5 ขวบขึ้นไป)
-  { minAge: 5, maxAge: 120, text: "เดินสะดุดก้อนหินหน้าฟาดพื้น", hp: -10, looks: -2 },
-  { minAge: 5, maxAge: 120, text: "กินอาหารริมทาง ท้องเสียหนักมาก", hp: -20, happiness: -10 },
-  { minAge: 5, maxAge: 120, text: "เก็บเงินได้ในกางเกงตัวเก่า", gold: 200, happiness: 5 },
-  { minAge: 5, maxAge: 120, text: "ดูสารคดีกาวๆ จนรู้สึกเบิกเนตร", smarts: 5, happiness: 5 },
-  { minAge: 5, maxAge: 120, text: "ไม่มีอะไรเกิดขึ้น ชีวิตเรียบง่ายและน่าเบื่อ", hp: 2, happiness: -2 }
+  { minAge: 5, maxAge: 120, text: "เดินสะดุดก้อนหินหน้าฟาดพื้น", hp: -10, looks: -2, type: "negative" },
+  { minAge: 5, maxAge: 120, text: "กินอาหารริมทาง ท้องเสียหนักมาก", hp: -20, happiness: -10, type: "negative" },
+  { minAge: 5, maxAge: 120, text: "เก็บเงินได้ในกางเกงตัวเก่า", gold: 200, happiness: 5, type: "positive" },
+  { minAge: 5, maxAge: 120, text: "ดูสารคดีกาวๆ จนรู้สึกเบิกเนตร", smarts: 5, happiness: 5, type: "neutral" },
+  { minAge: 5, maxAge: 120, text: "เห็นแสงประหลาดบนท้องฟ้าตอนกลางคืน", happiness: -5, smarts: -5, type: "mystery" }
 ];
 
-function getOrCreateLifeRoom(roomId) {
-  let room = lifeRooms.get(roomId);
-  if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 8, history: [] }; lifeRooms.set(roomId, room); }
-  return room;
-}
-
-function broadcastLifeState(roomId) {
-  const room = lifeRooms.get(roomId); if (!room) return;
-  io.to(`life_${roomId}`).emit("life_state", room);
-}
+function getOrCreateLifeRoom(roomId) { let room = lifeRooms.get(roomId); if (!room) { room = { id: roomId, hostId: null, status: "waiting", players: [], maxPlayers: 8, history: [] }; lifeRooms.set(roomId, room); } return room; }
+function broadcastLifeState(roomId) { const room = lifeRooms.get(roomId); if (!room) return; io.to(`life_${roomId}`).emit("life_state", room); }
 
 // ==========================================
 // 🔌 Socket.io Events (การรับส่งคำสั่งทั้งหมด)
@@ -654,9 +647,7 @@ io.on("connection", (socket) => {
     broadcastDeckState(roomId);
   });
 
-  // ==========================================
-  // 🧬 Somom's Life Events
-  // ==========================================
+  // --- 🧬 6. Somom's Life Events ---
   socket.on("join_life_room", ({ roomId, username, maxPlayers }) => {
     if (!roomId) return; const safeName = username ? String(username).trim() : "วิญญาณเร่ร่อน"; const room = getOrCreateLifeRoom(roomId);
     if (room.players.length === 0) { room.hostId = socket.id; if (maxPlayers) room.maxPlayers = maxPlayers; }
@@ -666,18 +657,34 @@ io.on("connection", (socket) => {
       if (room.status !== "waiting") return socket.emit("life_error", { message: "เขาเกิดกันไปหมดแล้ว รอชาติน้านะ!" });
       if (room.players.length >= room.maxPlayers) return socket.emit("life_error", { message: "ห้องคลอดเต็ม!" });
       
-      // 🎲 สุ่มสถานะครอบครัว
+      // 🎲 สุ่มสถานะครอบครัวและนามสกุล
+      const surnames = ["มีฤทธิ์", "บุญรอด", "ใจดี", "แซ่ตั้ง", "สมม", "มหาศาล", "รักดี"];
+      const surname = surnames[Math.floor(Math.random() * surnames.length)];
       const familyStatus = ["ยากจนข้นแค้น", "ฐานะปานกลาง", "ร่ำรวยคาบช้อนเงินช้อนทอง"][Math.floor(Math.random() * 3)];
       const startGold = familyStatus === "ร่ำรวยคาบช้อนเงินช้อนทอง" ? 500 : (familyStatus === "ยากจนข้นแค้น" ? 0 : 100);
 
+      // สร้างรายชื่อครอบครัว
+      const dadAge = Math.floor(Math.random() * 20) + 20;
+      const momAge = Math.floor(Math.random() * 20) + 20;
+      const family = {
+        father: { name: `พ่อ (${surname})`, age: dadAge },
+        mother: { name: `แม่ (${surname})`, age: momAge },
+        siblings: []
+      };
+      // สุ่มพี่น้อง 0-2 คน
+      const sibCount = Math.floor(Math.random() * 3);
+      for(let i=0; i<sibCount; i++) {
+        family.siblings.push({ name: `พี่น้อง ${i+1}`, age: Math.floor(Math.random() * 10) + 1 });
+      }
+
       room.players.push({ 
         id: socket.id, name: safeName, connected: true, isDead: false, age: 0, 
-        gold: startGold, 
-        hp: 100, 
-        happiness: 80, 
+        gold: startGold, hp: 100, happiness: 80, 
         smarts: Math.floor(Math.random() * 60) + 20, 
         looks: Math.floor(Math.random() * 60) + 20,
-        log: [`👶 ถือกำเนิดขึ้นมาในครอบครัว${familyStatus}`]
+        family: family,
+        badLuckCount: 0, // ตัวนับกันซวย
+        log: [{ text: `👶 ถือกำเนิดขึ้นมาในครอบครัว${familyStatus} นามสกุล ${surname}`, type: "mystery" }]
       });
     }
     socket.join(`life_${roomId}`); socket.data.lifeRoomId = roomId; broadcastLifeState(roomId);
@@ -690,27 +697,36 @@ io.on("connection", (socket) => {
     const player = room.players.find(p => p.id === socket.id); if (!player || player.isDead) return;
     
     player.age += 1; 
-    let eventLog = `อายุ ${player.age} ปี: `;
+    let eventText = `อายุ ${player.age} ปี: `;
     let passiveLog = "";
     
+    // อายุครอบครัวเพิ่มขึ้นด้วย
+    player.family.father.age += 1;
+    player.family.mother.age += 1;
+    player.family.siblings.forEach(s => s.age += 1);
+
     // 💼 ระบบรายได้รายปี (Passive Income)
     if (player.age >= 18 && player.age <= 60) {
-      // เงินเดือนพื้นฐาน + โบนัสตามความฉลาด
       const salary = 1000 + (player.smarts * 20); 
       player.gold += salary;
       passiveLog = ` [เงินเดือน +${salary}G]`;
     } else if (player.age > 60) {
       player.gold += 500;
       passiveLog = ` [บำนาญชราภาพ +500G]`;
-      // คนแก่สุขภาพลดลงเรื่อยๆ ตามธรรมชาติ
       player.hp -= (Math.floor(Math.random() * 5) + 2); 
     }
 
-    // 🎲 คัดกรองเหตุการณ์ที่ตรงกับช่วงอายุ
-    const validEvents = LIFE_EVENTS.filter(e => player.age >= e.minAge && player.age <= e.maxAge);
-    const randEvent = validEvents[Math.floor(Math.random() * validEvents.length)]; 
+    // 🎲 สุ่มเหตุการณ์ + ระบบ Bad Luck Protection (กันซวย)
+    let validEvents = LIFE_EVENTS.filter(e => player.age >= e.minAge && player.age <= e.maxAge);
     
-    eventLog += randEvent.text + passiveLog;
+    // ถ้าซวยติดกัน 2 ตา ตาต่อไปต้องเจอเรื่องดีหรือปกติเท่านั้น!
+    if (player.badLuckCount >= 2) {
+      const protectedEvents = validEvents.filter(e => e.type === "positive" || e.type === "neutral");
+      if (protectedEvents.length > 0) validEvents = protectedEvents;
+    }
+
+    const randEvent = validEvents[Math.floor(Math.random() * validEvents.length)]; 
+    eventText += randEvent.text + passiveLog;
     
     // อัปเดตสเตตัสจากเหตุการณ์
     if(randEvent.hp) player.hp += randEvent.hp; 
@@ -719,23 +735,32 @@ io.on("connection", (socket) => {
     if(randEvent.looks) player.looks += randEvent.looks; 
     if(randEvent.gold) player.gold += randEvent.gold;
     
+    // จัดการตัวนับความซวย
+    if (randEvent.type === "negative") player.badLuckCount++;
+    else player.badLuckCount = 0;
+
     // คุมกรอบสเตตัส
     player.happiness = Math.max(0, Math.min(100, player.happiness)); 
     player.smarts = Math.max(0, Math.min(100, player.smarts)); 
     player.looks = Math.max(0, Math.min(100, player.looks));
     
+    let eventType = randEvent.type;
+
     // เช็คการตาย
     if(player.hp <= 0) { 
       player.hp = 0; player.isDead = true; 
-      eventLog += " 💀 [เสียชีวิตแล้ว]"; 
+      eventText += " 💀 [เสียชีวิตแล้ว]"; 
+      eventType = "negative";
       room.history.unshift(`🪦 ${player.name} สิ้นใจในวัย ${player.age} ปี!`); 
     } else if (player.age >= 100) { 
       player.hp = 0; player.isDead = true; 
-      eventLog += " 🕊️ [หมดอายุขัยตามธรรมชาติ]"; 
+      eventText += " 🕊️ [หมดอายุขัยตามธรรมชาติ]"; 
+      eventType = "mystery";
       room.history.unshift(`🕊️ ${player.name} หมดอายุขัยอย่างสงบในวัย ${player.age} ปี`); 
     }
     
-    player.log.unshift(eventLog); 
+    // บันทึกลง Log แบบมีสี (Type)
+    player.log.unshift({ text: eventText, type: eventType }); 
     broadcastLifeState(roomId);
   });
 

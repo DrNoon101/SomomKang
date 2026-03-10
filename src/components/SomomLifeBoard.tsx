@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { useRouter } from "next/navigation";
 
-interface Player { id: string; name: string; connected: boolean; isDead: boolean; age: number; hp: number; happiness: number; smarts: number; looks: number; gold: number; log: string[]; }
+interface FamilyMember { name: string; age: number; }
+interface LogEntry { text: string; type: "positive" | "negative" | "neutral" | "mystery"; }
+interface Player { 
+  id: string; name: string; connected: boolean; isDead: boolean; age: number; 
+  hp: number; happiness: number; smarts: number; looks: number; gold: number; 
+  family: { father: FamilyMember, mother: FamilyMember, siblings: FamilyMember[] };
+  log: LogEntry[]; 
+}
 interface LifeState { id: string; hostId: string; status: "waiting" | "playing" | "ended"; maxPlayers: number; players: Player[]; history: string[]; }
 
 export default function SomomLifeBoard({ roomId, username }: { roomId: string; username: string }) {
@@ -33,7 +40,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
   const isHost = socket.id === gameState.hostId;
   const me = gameState.players.find(p => p.id === socket.id);
   
-  // ตัวช่วยวาดหลอดพลัง (Progress Bar)
   const StatusBar = ({ label, value, colorClass, emoji }: { label: string, value: number, colorClass: string, emoji: string }) => (
     <div className="flex flex-col gap-1 w-full bg-black/40 p-2 rounded-xl border border-slate-700">
       <div className="flex justify-between text-[10px] sm:text-xs font-bold">
@@ -46,6 +52,21 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
     </div>
   );
 
+  // ฟังก์ชันแยกสีเหตุการณ์ (Color-Coded UI)
+  const getLogColor = (type: string, isFirst: boolean) => {
+    let base = "p-2 rounded-lg text-sm border-l-4 ";
+    if (isFirst) base += "shadow-[0_0_10px_rgba(255,255,255,0.1)] font-bold ";
+    else base += "opacity-80 ";
+
+    switch(type) {
+      case "positive": return base + "border-green-500 text-green-200 bg-green-950/40";
+      case "negative": return base + "border-red-500 text-red-200 bg-red-950/40";
+      case "neutral": return base + "border-blue-500 text-blue-200 bg-blue-950/40";
+      case "mystery": return base + "border-purple-500 text-purple-200 bg-purple-950/40";
+      default: return base + "border-slate-500 text-slate-300 bg-slate-800/50";
+    }
+  };
+
   return (
     <div className="min-h-dvh bg-slate-950 text-white font-sans flex flex-col relative h-dvh overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
       
@@ -57,7 +78,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
         <button onClick={() => router.push("/")} className="bg-red-900/50 text-red-400 px-3 py-1 rounded-lg text-sm font-bold hover:bg-red-600 hover:text-white transition border border-red-500/50">ยอมแพ้โชคชะตา</button>
       </header>
 
-      {/* --- โหมดรอคน --- */}
       {gameState.status === "waiting" && (
         <main className="flex-1 flex flex-col items-center justify-center p-4 z-10 overflow-y-auto">
           <div className="text-center bg-black/60 p-8 sm:p-10 rounded-3xl border border-emerald-900/50 shadow-[0_0_40px_rgba(16,185,129,0.15)] max-w-lg w-full">
@@ -78,7 +98,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
         </main>
       )}
 
-      {/* --- โหมดจำลองชีวิต --- */}
       {gameState.status === "playing" && me && (
         <div className="flex-1 flex flex-col md:flex-row gap-4 p-2 sm:p-4 h-full overflow-hidden max-w-7xl mx-auto w-full z-10">
           
@@ -111,7 +130,19 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
               </div>
             </div>
 
-            {/* แถบสเตตัส */}
+            {/* ✨ เพิ่มกล่องแสดงครอบครัว (โตไปพร้อมกัน) */}
+            <div className="bg-black/40 border border-emerald-900/50 rounded-xl p-3 mb-4 shrink-0">
+              <h3 className="text-emerald-400 font-bold text-xs mb-2 border-b border-emerald-900/50 pb-1">👨‍👩‍👧‍👦 สมาชิกครอบครัว</h3>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="bg-slate-800 px-2 py-1 rounded-md text-slate-300 border border-slate-600">{me.family.father.name} (อายุ {me.family.father.age})</span>
+                <span className="bg-slate-800 px-2 py-1 rounded-md text-slate-300 border border-slate-600">{me.family.mother.name} (อายุ {me.family.mother.age})</span>
+                {me.family.siblings.map((sib, idx) => (
+                    <span key={idx} className="bg-slate-800 px-2 py-1 rounded-md text-slate-300 border border-slate-700">{sib.name} (อายุ {sib.age})</span>
+                ))}
+                {me.family.siblings.length === 0 && <span className="text-slate-500 italic px-1 py-1">เป็นลูกคนเดียว</span>}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-6 shrink-0">
               <StatusBar label="สุขภาพ" value={me.hp} emoji="💖" colorClass={me.hp > 50 ? "bg-green-500" : "bg-red-500"} />
               <StatusBar label="ความสุข" value={me.happiness} emoji="😊" colorClass={me.happiness > 50 ? "bg-yellow-400" : "bg-orange-500"} />
@@ -119,7 +150,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
               <StatusBar label="หน้าตา" value={me.looks} emoji="✨" colorClass="bg-pink-500" />
             </div>
 
-            {/* ปุ่ม Age Up */}
             <button 
               onClick={() => !me.isDead && socket.emit("age_up", { roomId })}
               disabled={me.isDead}
@@ -128,11 +158,11 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
               +1 ปี (ใช้ชีวิต) ⏳
             </button>
 
-            {/* ประวัติชีวิตส่วนตัว */}
-            <div className="flex-1 bg-slate-900/80 rounded-2xl border border-slate-700 p-3 overflow-y-auto flex flex-col gap-2 min-h-0">
-              {me.log.map((log, i) => (
-                <div key={i} className={`p-2 rounded-lg text-sm border-l-4 ${i === 0 ? 'bg-slate-800 border-emerald-500 text-white font-bold' : 'bg-slate-800/50 border-slate-600 text-slate-300'}`}>
-                  {log}
+            {/* ✨ ประวัติชีวิตส่วนตัวแบบลงสี (Color-Coded UI) */}
+            <div className="flex-1 bg-slate-900/80 rounded-2xl border border-slate-700 p-3 overflow-y-auto flex flex-col gap-2 min-h-0 shadow-inner">
+              {me.log.map((logEntry, i) => (
+                <div key={i} className={getLogColor(logEntry.type, i === 0)}>
+                  {logEntry.text}
                 </div>
               ))}
             </div>
@@ -141,8 +171,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
 
           {/* ขวา: โลกออนไลน์ (Leaderboard & Global News) */}
           <div className="w-full md:w-80 flex flex-col gap-4 h-full shrink-0">
-            
-            {/* รายชื่อผู้เล่นทั้งหมด */}
             <div className="bg-black/60 border border-slate-700 rounded-3xl p-4 flex-1 flex flex-col overflow-hidden shadow-xl">
               <h3 className="text-emerald-400 font-bold text-center border-b border-slate-700 pb-2 mb-3 shrink-0">👥 รายชื่อประชากร</h3>
               <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1 min-h-0">
@@ -161,7 +189,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
               </div>
             </div>
 
-            {/* ข่าวประกาศโลก */}
             <div className="bg-black/60 border border-slate-700 rounded-3xl p-4 h-1/3 flex flex-col overflow-hidden shadow-xl">
               <h3 className="text-red-400 font-bold text-center border-b border-slate-700 pb-2 mb-2 shrink-0">📰 ข่าวมรณกรรม</h3>
               <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1 min-h-0">
@@ -173,7 +200,6 @@ export default function SomomLifeBoard({ roomId, username }: { roomId: string; u
                 {gameState.history.length === 0 && <p className="text-xs text-slate-500 text-center mt-4">ยังไม่มีใครตาย...</p>}
               </div>
             </div>
-
           </div>
 
         </div>
